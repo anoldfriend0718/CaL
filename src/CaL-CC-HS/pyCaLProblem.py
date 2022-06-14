@@ -1,9 +1,79 @@
-from pyCaLPlant import Plant
+from pyCaLPlant import CalcinerSide, CarbonatorSide
 import geatpy as ea
 import numpy as np
 import concurrent.futures
 
-class CaLProblem(ea.Problem):  # 继承Problem父类
+# global parameters
+
+convey_consumption = 10e3/100
+storage_carbonator_distance = 100
+cooling_eff = 0.8e-2
+T_amb = 20
+p_amb = 101325
+isentropic_eff_mc = 0.87
+mechanical_eff = 0.97
+p_co2_storage=75e5
+
+class CalcProblem(object):
+    def __init__(self,parameters) -> None:
+        ## plant variables
+        self._T_calc=parameters["T_calc"]
+        self._cao_conversion=parameters["cao_conversion"]
+        self._flue_gas_composistion=parameters["flue_gas_composition"]
+        self._decarbonized_rate=parameters["decarbonized_rate"]
+        ## fixed parameters
+        self._calciner_eff=0.99
+        self._deltaTmin_SSHX=20
+        self._deltaTmin_SGHX=15
+        self._T_cooling_co2=20
+        self._n_compression=6
+
+        ## global parameters
+        self._isentropic_eff_mc=isentropic_eff_mc
+        self._mechanical_eff=mechanical_eff
+        self._convey_consumption=convey_consumption
+        self._storage_carbonator_distance=storage_carbonator_distance
+        self._T_amb=T_amb
+        self._p_amb=p_amb
+        self._cooling_eff=cooling_eff
+        self._p_co2_storage=p_co2_storage
+
+        calc_para=self._compose_calc_parameters()
+        self._calcs=CalcinerSide(calc_para)
+
+    def _compose_calc_parameters(self):
+        parameters={}
+        parameters["flue_gas_composition"] = self._flue_gas_composistion
+        parameters["isentropic_eff_mc"] = self._isentropic_eff_mc
+        parameters["mechanical_eff"] = self._mechanical_eff
+        parameters["decarbonized_rate"] = self._decarbonized_rate
+        parameters["cao_conversion"] = self._cao_conversion
+        parameters["calciner_eff"] = self._calciner_eff
+        parameters["convey_consumption"] = self._convey_consumption
+        parameters["storage_carbonator_distance"] = self._storage_carbonator_distance
+        parameters["T_amb"] = self._T_amb
+        parameters["p_amb"] = self._p_amb
+        parameters["T_calc"]= self._T_calc
+        parameters["deltaTmin_SSHX"]=self._deltaTmin_SSHX
+        parameters["deltaTmin_SGHX"]=self._deltaTmin_SGHX
+        parameters["T_cooling_co2"]=self._T_cooling_co2
+        parameters["p_co2_storage"]=self._p_co2_storage
+        parameters["n_compression"]=self._n_compression
+        parameters["cooling_eff"]=self._cooling_eff
+        return parameters
+
+    def solve(self,inputs):
+        results=self._calcs.solve(inputs)
+        return results
+
+    def opt(self, m,mfrac):
+        results=self._calcs.calciner(mfrac,m)
+        return results["We_calc"]
+
+
+
+
+class CarbProblem(ea.Problem):  # 继承Problem父类
     def __init__(self,parameters):
         name = 'CaLProblem'  # 初始化name（函数名称，可以随意设置）
         ##  plant variabels
@@ -16,17 +86,23 @@ class CaLProblem(ea.Problem):  # 继承Problem父类
         self._T_water_reactor_out=parameters["T_water_reactor_out"]
 
         ## fixed plant parameters
-        self._p_carb=101325
         self._carbonator_eff = 0.99
-        self._convey_consumption = 10e3/100
-        self._storage_carbonator_distance = 100
-        self._cooling_eff = 0.8e-2
         self._delta_T_pinch=15
-        self._T_amb = 20
+        self._flue_gas_pressure_loss_1 = 0.04
+        self._flue_gas_pressure_loss_2 = 0.04
+       
+       #global paramters
+        self._convey_consumption = convey_consumption
+        self._storage_carbonator_distance = storage_carbonator_distance
+        self._cooling_eff = cooling_eff
+        self._T_amb = T_amb
+        self._p_amb = p_amb
+        self._isentropic_eff_mc = isentropic_eff_mc
+        self._mechanical_eff = mechanical_eff
 
         # initialize plant
         plant_parameters=self._compose_plant_parameters()
-        self._plant = Plant(plant_parameters)
+        self._plant = CarbonatorSide(plant_parameters)
 
         # for plant constraints
         self._hot_util=1e2
@@ -55,12 +131,15 @@ class CaLProblem(ea.Problem):  # 继承Problem父类
         parameters={}
 
         parameters["flue_gas_composition"]=self._flue_gas_composistion
+        parameters["isentropic_eff_mc"] = self._isentropic_eff_mc
+        parameters["mechanical_eff"] = self._mechanical_eff
+        parameters["flue_gas_pressure_loss_1"] = self._flue_gas_pressure_loss_1
+        parameters["flue_gas_pressure_loss_2"] = self._flue_gas_pressure_loss_2
         parameters["decarbonized_rate"]=self._decarbonized_rate
         parameters["vol_rate_flue_gas"]=self._vol_rate_flue_gas
         parameters["T_flue_gas"]=self._T_flue_gas
         parameters["T_water_reactor_out"]=self._T_water_reactor_out
         parameters["T_carb"]=self._T_carb
-        parameters["p_carb"]=self._p_carb
         parameters["cao_conversion"]=self._cao_conversion
 
         parameters["carbonator_eff"]=self._carbonator_eff 
@@ -69,6 +148,9 @@ class CaLProblem(ea.Problem):  # 继承Problem父类
         parameters["cooling_eff "]=self._cooling_eff 
         parameters["delta_T_pinch"]=self._delta_T_pinch 
         parameters["T_amb"]=self._T_amb 
+        parameters["p_amb"] = self._p_amb
+        parameters["p_water"] = parameters["p_amb"]
+
         return parameters
 
     def evalVars(self, Vars):  # 目标函数
@@ -91,7 +173,7 @@ class CaLProblem(ea.Problem):  # 继承Problem父类
             for _, future in enumerate(futures):
                 result=future.result()
                 # objective function
-                obj=result["plant_eff"]
+                obj=result["carb_heat_rec_eff"]
                 objs.append(obj)
                 #constrainst
                 c1=result["hot_utility"]-self._hot_util #
@@ -99,3 +181,7 @@ class CaLProblem(ea.Problem):  # 继承Problem父类
         f=np.reshape(objs,(-1,1)) # 计算目标函数值矩阵
         CV=np.array(constraints) # 构建违反约束程度矩阵
         return f, CV
+
+    def solve(self,inputs):
+        results=self._plant.solve(inputs)
+        return results
