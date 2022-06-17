@@ -1,18 +1,25 @@
 from pyCaLPlant import CalcinerSide, CarbonatorSide
+
 import geatpy as ea
 import numpy as np
 import concurrent.futures
 
 # global parameters
-
-convey_consumption = 10e3/100
-storage_carbonator_distance = 100
-cooling_eff = 0.8e-2
 T_amb = 20
 p_amb = 101325
-isentropic_eff_mc = 0.87
-mechanical_eff = 0.97
-p_co2_storage=75e5
+convey_consumption = 10e3/100  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+storage_carbonator_distance = 100  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+cooling_eff = 0.8e-2  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+isentropic_eff_mc = 0.87 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+isentropic_eff_fan= 0.80 # reference: https://doi.org/10.1016/j.ecmx.2020.100038
+mechanical_eff = 0.97 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+p_co2_storage=75e5 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+delta_T_pinch=15 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+carbonator_thermal_loss=0.01  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+flue_gas_pressure_loss_ratio = 0.01 #https://doi.org/10.1016/j.ecmx.2019.100025
+decarbon_flue_gas_pressure_loss_ratio  = 0.02 #estimated based on flue_gas_pressure_loss_ratio
+carbonator_pressure_loss=15e3 #https://doi.org/10.1016/j.jclepro.2019.02.049
+
 
 class CalcProblem(object):
     def __init__(self,parameters) -> None:
@@ -40,6 +47,7 @@ class CalcProblem(object):
 
         calc_para=self._compose_calc_parameters()
         self._calcs=CalcinerSide(calc_para)
+
 
     def _compose_calc_parameters(self):
         parameters={}
@@ -74,35 +82,20 @@ class CalcProblem(object):
 
 
 class CarbProblem(ea.Problem):  # 继承Problem父类
-    def __init__(self,parameters):
+    def __init__(self,carbonator_parameters):
         name = 'CaLProblem'  # 初始化name（函数名称，可以随意设置）
         ##  plant variabels
-        self._T_carb=parameters["T_carb"]
-        self._cao_conversion=parameters["cao_conversion"]
-        self._flue_gas_composistion=parameters["flue_gas_composition"]
-        self._vol_rate_flue_gas=parameters["vol_rate_flue_gas"]
-        self._decarbonized_rate=parameters["decarbonized_rate"]
-        self._T_flue_gas=parameters["T_flue_gas"]
-        self._T_water_reactor_out=parameters["T_water_reactor_out"]
-
-        ## fixed plant parameters
-        self._carbonator_eff = 0.99
-        self._delta_T_pinch=15
-        self._flue_gas_pressure_loss_1 = 0.04
-        self._flue_gas_pressure_loss_2 = 0.04
-       
-       #global paramters
-        self._convey_consumption = convey_consumption
-        self._storage_carbonator_distance = storage_carbonator_distance
-        self._cooling_eff = cooling_eff
-        self._T_amb = T_amb
-        self._p_amb = p_amb
-        self._isentropic_eff_mc = isentropic_eff_mc
-        self._mechanical_eff = mechanical_eff
+        self._T_carb=carbonator_parameters["T_carb"]
+        self._cao_conversion=carbonator_parameters["cao_conversion"]
+        self._flue_gas_composistion=carbonator_parameters["flue_gas_composition"]
+        self._vol_rate_flue_gas=carbonator_parameters["vol_rate_flue_gas"]
+        self._decarbonized_rate=carbonator_parameters["decarbonized_rate"]
+        self._T_flue_gas=carbonator_parameters["T_flue_gas"]
+        self._T_water_reactor_out=carbonator_parameters["T_water_reactor_out"]
 
         # initialize plant
-        plant_parameters=self._compose_plant_parameters()
-        self._plant = CarbonatorSide(plant_parameters)
+        carbonator_parameters=self._compose_carbonator_parameters()
+        self._carbonatorSide = CarbonatorSide(carbonator_parameters)
 
         # for plant constraints
         self._hot_util=1e2
@@ -116,25 +109,26 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         Dim = 3  # 初始化Dim（决策变量维数）
         varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
 
-        lb = [self._T_amb+self._delta_T_pinch, #T_cao,in
-              self._T_amb+self._delta_T_pinch, #T_flue_gas,in
-              self._T_amb]  # T_cold water  决策变量下界
-        ub = [self._T_carb-self._delta_T_pinch, #T_cao,in
-              self._T_carb-self._delta_T_pinch, #T_flue_gas,in
+        lb = [T_amb+delta_T_pinch, #T_cao,in
+              T_amb+delta_T_pinch, #T_flue_gas,in
+              T_amb]  # T_cold water  决策变量下界
+        ub = [self._T_carb-delta_T_pinch, #T_cao,in
+              self._T_carb-delta_T_pinch, #T_flue_gas,in
               self._T_water_reactor_out]  #  T_hot water 决策变量上界
         lbin = [1,1,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
         ubin = [1,1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         # 调用父类构造方法完成实例化
         ea.Problem.__init__(self, name, M, maxormins, Dim, varTypes, lb, ub, lbin, ubin)
 
-    def _compose_plant_parameters(self):
+    def _compose_carbonator_parameters(self):
         parameters={}
 
         parameters["flue_gas_composition"]=self._flue_gas_composistion
-        parameters["isentropic_eff_mc"] = self._isentropic_eff_mc
-        parameters["mechanical_eff"] = self._mechanical_eff
-        parameters["flue_gas_pressure_loss_1"] = self._flue_gas_pressure_loss_1
-        parameters["flue_gas_pressure_loss_2"] = self._flue_gas_pressure_loss_2
+        parameters["isentropic_eff_mc"] = isentropic_eff_fan
+        parameters["mechanical_eff"] = mechanical_eff
+        parameters["flue_gas_pressure_loss_ratio"] = flue_gas_pressure_loss_ratio
+        parameters["decarbon_flue_gas_pressure_loss_ratio"] = decarbon_flue_gas_pressure_loss_ratio
+        parameters["carbonator_pressure_loss"]=carbonator_pressure_loss
         parameters["decarbonized_rate"]=self._decarbonized_rate
         parameters["vol_rate_flue_gas"]=self._vol_rate_flue_gas
         parameters["T_flue_gas"]=self._T_flue_gas
@@ -142,13 +136,13 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["T_carb"]=self._T_carb
         parameters["cao_conversion"]=self._cao_conversion
 
-        parameters["carbonator_eff"]=self._carbonator_eff 
-        parameters["convey_consumption"]=self._convey_consumption 
-        parameters["storage_carbonator_distance"]=self._storage_carbonator_distance 
-        parameters["cooling_eff "]=self._cooling_eff 
-        parameters["delta_T_pinch"]=self._delta_T_pinch 
-        parameters["T_amb"]=self._T_amb 
-        parameters["p_amb"] = self._p_amb
+        parameters["carbonator_eff"]=1-carbonator_thermal_loss
+        parameters["convey_consumption"]=convey_consumption 
+        parameters["storage_carbonator_distance"]=storage_carbonator_distance 
+        parameters["cooling_eff "]=cooling_eff
+        parameters["delta_T_pinch"]=delta_T_pinch 
+        parameters["T_amb"]=T_amb 
+        parameters["p_amb"] = p_amb
         parameters["p_water"] = parameters["p_amb"]
 
         return parameters
@@ -167,7 +161,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
                 input["T_flue_gas_reactor_in"]=Vars[i,0]
                 input["T_cao_reactor_in"]=Vars[i,1]
                 input["T_water_reactor_in"]=Vars[i,2]
-                future=map_executor_pool.submit(self._plant.solve,input)
+                future=map_executor_pool.submit(self._carbonatorSide.solve,input)
                 futures.append(future)
             # reduce
             for _, future in enumerate(futures):
@@ -184,5 +178,5 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         return f, CV
 
     def solve(self,inputs):
-        results=self._plant.solve(inputs)
+        results=self._carbonatorSide.solve(inputs)
         return results

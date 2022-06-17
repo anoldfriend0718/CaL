@@ -27,8 +27,8 @@ class Pinch_point_analyzer(object):
         self._T_carb = inputs["T_carb"]
         self._p_amb = inputs["p_amb"]
         self._T_amb = inputs["T_amb"]
-        self._T_flue_gas_compressor_out = inputs["T_flue_gas_compressor_out"]  # todo:T_flue_gas_compressor_out
-        self._p_flue_gas_compressor_out = inputs["p_flue_gas_compressor_out"]
+        self._T_flue_gas_fan_out = inputs["T_flue_gas_fan_out"]  
+        self._p_flue_gas_fan_out = inputs["p_flue_gas_fan_out"]
         self._T_flue_gas_reactor_in = inputs["T_flue_gas_reactor_in"]
         self._T_cao_reactor_in = inputs["T_cao_reactor_in"]
         self._T_water_reactor_in = inputs["T_water_reactor_in"]
@@ -36,7 +36,8 @@ class Pinch_point_analyzer(object):
         self._p_decarbonized_flue_gas_out = self._p_amb
         self._T_delta_pinch = inputs["T_delta_pinch"]
 
-        self._p_carb = inputs["p_carb"]
+        self._p_carb_o = inputs["p_carb_o"]
+        self._p_carb_i = inputs["p_carb_i"]
         self._p_water = inputs["p_water"]
 
         self._pw = Cp0mass_Wrapper(inputs["flue_gas_composition"], inputs["deconbonized_rate"])
@@ -68,24 +69,24 @@ class Pinch_point_analyzer(object):
         decarb_flue_gas_name = self._pw.get_decarbonized_flue_gas_refprop_name()
         pinch_point_data["ENERGY"]["H_flue_gas_decarb"] = self._m_decarbonized_flue_gas * \
             (CP.PropsSI('H', 'T', self._T_carb+273.15,
-                        'P', self._p_carb, decarb_flue_gas_name) -
+                        'P', self._p_carb_o, decarb_flue_gas_name) -
              CP.PropsSI('H', 'T', self._T_decarbonized_flue_gas_out + 273.15,
                         'P', self._p_decarbonized_flue_gas_out, decarb_flue_gas_name))
         pinch_point_data["CP"]["H_flue_gas_decarb"] = pinch_point_data["ENERGY"]["H_flue_gas_decarb"] / \
             (self._T_carb-self._T_decarbonized_flue_gas_out)
 
         # C1: flue gas
-        pinch_point_data["TSUPPLY"]["C_flue_gas"] = self._T_flue_gas_compressor_out  # todo:T_flue_gas_compressor_out
+        pinch_point_data["TSUPPLY"]["C_flue_gas"] = self._T_flue_gas_fan_out  # todo:T_flue_gas_fan_out
         pinch_point_data["TTARGET"]["C_flue_gas"] = self._T_flue_gas_reactor_in
         pinch_point_data["FLOWRATE"]["C_flue_gas"] = self._m_flue_gas_in
         flue_gas_name = self._pw.get_flue_gas_refprop_name()
         pinch_point_data["ENERGY"]["C_flue_gas"] = self._m_flue_gas_in * \
             (CP.PropsSI('H', 'T', self._T_flue_gas_reactor_in+273.15,
-                        'P', self._p_carb, flue_gas_name) -
-             CP.PropsSI('H', 'T', self._T_flue_gas_compressor_out+273.15,
-                        'P', self._p_flue_gas_compressor_out, flue_gas_name))
+                        'P', self._p_carb_i, flue_gas_name) -
+             CP.PropsSI('H', 'T', self._T_flue_gas_fan_out+273.15,
+                        'P', self._p_flue_gas_fan_out, flue_gas_name))
         pinch_point_data["CP"]["C_flue_gas"] = pinch_point_data["ENERGY"]["C_flue_gas"] / \
-            (self._T_flue_gas_reactor_in-self._T_flue_gas_compressor_out)
+            (self._T_flue_gas_reactor_in-self._T_flue_gas_fan_out)
 
         ## C2: CaO
         pinch_point_data["TSUPPLY"]["C_CaO"] = self._T_amb
@@ -152,7 +153,7 @@ class Pinch_point_analyzer(object):
         pinch.solve()
         hot_util = pinch.hotUtility*1e3  # W
         cold_util=pinch.coldUtility*1e3  # W
-        HIntervalTable=pinch.constructEnthalpyIntervalTable()
+        HIntervalTable=pinch.EnthaphyIntervalTable
         streamPropertyTable=[]
         for i,stream in enumerate(pinch.streams):
             record={}

@@ -21,13 +21,14 @@ class CarbonatorSide(object):
         self._decarbonized_rate = parameters["decarbonized_rate"]
         self._isentropic_eff_mc = parameters["isentropic_eff_mc"]
         self._mechanical_eff = parameters["mechanical_eff"]
-        self._flue_gas_pressure_loss_1 = parameters["flue_gas_pressure_loss_1"]
-        self._flue_gas_pressure_loss_2 = parameters["flue_gas_pressure_loss_2"]
-        
+        self._flue_gas_pressure_loss_ratio = parameters["flue_gas_pressure_loss_ratio"]
+        self._decarbon_flue_gas_pressure_loss_ratio = parameters["decarbon_flue_gas_pressure_loss_ratio"]
+        self._carbonator_pressure_loss=parameters["carbonator_pressure_loss"]
+
         self._vol_rate_flue_gas = parameters["vol_rate_flue_gas"]  # m3/s
         self._T_flue_gas_i = parameters["T_flue_gas"]
         self._T_carb = parameters["T_carb"]
-        # self._p_carb=parameters["p_carb"]
+
         self._cao_conversion = parameters["cao_conversion"]
         self._T_water_reactor_out = parameters["T_water_reactor_out"]
         self._p_water = parameters["p_water"]  # todo: change the water pressure
@@ -56,7 +57,9 @@ class CarbonatorSide(object):
         results["p_flue_gas_in"] = self._p_flue_gas_i
         results["T_decarbonized_flue_gas_out"] = self._T_flue_gas_i  # keep same as the inlet flue gas
         results["T_water_reactor_out"] = self._T_water_reactor_out
-        results["p_carb"] = self._p_amb/(1-self._flue_gas_pressure_loss_2)  # 压力略高于大气压，需扣减压力损失
+        results["p_carb_o"] = self._p_amb/(1-self._decarbon_flue_gas_pressure_loss_ratio)  # 压力略高于大气压，需扣减压力损失
+        results["p_carb_i"]=self._carbonator_pressure_loss+results["p_carb_o"] 
+        results["p_carb"]=(results["p_carb_o"]+results["p_carb_i"])/2
         results["p_water"] = self._p_water
         results["cao_conversion"] = self._cao_conversion
         results = {**input, **results}
@@ -76,17 +79,17 @@ class CarbonatorSide(object):
             results["carb_heat_rec_eff"]=-1
             return results
 
-        # flue gas compressor
+        # flue gas fan
         flue_gas_name = self._pw.get_flue_gas_refprop_name()
         flue_gas_pi = self._p_amb
-        flue_gas_po = results["p_carb"]/(1-self._flue_gas_pressure_loss_1)
+        flue_gas_po = results["p_carb_i"]/(1-self._flue_gas_pressure_loss_ratio)
         flue_gas_mass_rate = results["m_flue_gas_in"]
-        flue_gas_compressor_results = self.compressor_power(self._T_flue_gas_i,
+        flue_gas_fan_results = self.flue_gas_fan_power(self._T_flue_gas_i,
                                                             flue_gas_pi,
                                                             flue_gas_po,
                                                             flue_gas_mass_rate,
                                                             flue_gas_name)
-        results.update(flue_gas_compressor_results)
+        results.update(flue_gas_fan_results)
 
         # Q hot water
         h_To_water = CP.PropsSI('H', 'T', self._T_water_reactor_out+273.15,
@@ -103,22 +106,27 @@ class CarbonatorSide(object):
         # pinch point analysis
         pa = Pinch_point_analyzer(results)
         pa_text = pa.write_pyPinch_data_text()
-        hot_util, cold_util,total_HXA = pa.solve(pa_text)
-        results["total_HXA"]=total_HXA
+        hot_util, cold_util,total_HENA = pa.solve(pa_text)
+        results["pinch_analysis_text"]=pa_text
+        results["total_HEN_area"]=total_HENA
         results["hot_utility"] = hot_util
         results["cold_utility"] = cold_util
-        # cooling power
-        results["cooling_power"] = self.cooling_power(cold_util)*(-1)
+
+        ## The storage vessels are not insulated, so the residual sensible heat goes dispersed to the environment
+        ## avoiding the addition of a dedicated air cooler. (https://doi.org/10.1016/j.ecmx.2020.100039)
+        ## cooling power
+        ## results["cooling_power"] = self.cooling_power(cold_util)*(-1)
+
         # summary
-        results["carb_auxiliary_power"] = results["cooling_power"] + \
-            results["conveying_power"]+results["flue_gas_compressor_power"]
+        results["carb_auxiliary_power"] = results["conveying_power"]+ \
+            results["flue_gas_fan_power"]
 
         results["carb_heat_rec_eff"] = results["Q_hot_water"]/((results["m_cao_in"] -
                                                         results["m_cao_unr_out"])*self._delta_h)
 
         return results
 
-    def compressor_power(self, Ti, pi, po, mass_rate, fluid):
+    def flue_gas_fan_power(self, Ti, pi, po, mass_rate, fluid):
         hi = CP.PropsSI('H', 'T', Ti+273.15, 'P', pi, fluid)
         si = CP.PropsSI('S', 'T', Ti+273.15, 'P', pi, fluid)
         ho_s = CP.PropsSI('H', 'P', po, 'S', si, fluid)
@@ -126,9 +134,9 @@ class CarbonatorSide(object):
         To = CP.PropsSI('T', 'P', po, 'H', ho_c, fluid)-273.15
         W = ((ho_c-hi)/self._mechanical_eff)*mass_rate
         results = {}
-        results["p_flue_gas_compressor_out"] = po
-        results["T_flue_gas_compressor_out"] = To
-        results["flue_gas_compressor_power"] = W*(-1)
+        results["p_flue_gas_fan_out"] = po
+        results["T_flue_gas_fan_out"] = To
+        results["flue_gas_fan_power"] = W*(-1)
         return results
 
     def carbonator(self, Ti_flue_gas, Ti_cao, Ti_water, To_water, Tcarb, pcarb, X):
@@ -199,7 +207,7 @@ class CarbonatorSide(object):
         results["m_deconbonized_flue_gas_out"] = mass_deconbonized_flue_gas_out
         results["m_cao_unr_out"] = mass_cao_i-mass_cao_r
         results["m_caco3_out"] = mass_caco3_o
-        results["toatal_Q_heat"]=mole_cao_r*delta_H_Tr
+        results["Q_carbonation"]=mole_cao_r*delta_H_Tr
         results["delta_H_Tcarb"]=delta_H_Tr
         return results
 
@@ -207,8 +215,8 @@ class CarbonatorSide(object):
         return self._convey_consumption*self._storage_carbonator_distance * \
             (m_cao_i+m_cao_unr+m_caco3_o)
 
-    def cooling_power(self, cold_utility):
-        return self._cooling_eff*cold_utility
+    # def cooling_power(self, cold_utility):
+    #     return self._cooling_eff*cold_utility
 
 class CalcinerSide(object):
     def __init__(self, parameters) -> None:
@@ -246,12 +254,13 @@ class CalcinerSide(object):
         # print(mass_co2_out,T_co2_o,self._p_amb,self._p_co2_storage,self._T_cooling_co2,self._n_compression)
         compressor_results=self.co2_multiple_stage_compressor(mass_co2_out,
             T_co2_o,self._p_amb,self._p_co2_storage,self._T_cooling_co2,self._n_compression)
-        results.update(compressor_results)
+        compressor_results["cooling_power"]=self.cooling_power(compressor_results["cooling_energy"])*(-1)
+        results["CO2_compression_train"]=compressor_results
 
         results["conveying_power"]=self.conveying_power(mass_camix_in,results["mass_cao_out"])*(-1)
-        results["cooling_power"]=self.cooling_power(results["cooling_energy"])*(-1)
-        results["calc_auxiliary_power"]=results["conveying_power"]+results["cooling_power"]+\
-            results["compressor_power"]
+        
+        results["calc_auxiliary_power"]=results["conveying_power"]+results["CO2_compression_train"]["cooling_power"]+\
+            results["CO2_compression_train"]["compressor_power"]
 
         return results
 

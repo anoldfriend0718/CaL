@@ -681,7 +681,7 @@ class PyPinch:
                 writer.writerow([self.grandCompositeCurve['H'][i],
                     self.grandCompositeCurve['T'][i]])
 
-    def _myRound(self,a,ndigital=3):
+    def _myRound(self,a,ndigital=5):
         return round(a,ndigital)
     
     def _lessThanOrEqual(self,a,b,eps=1e-3):

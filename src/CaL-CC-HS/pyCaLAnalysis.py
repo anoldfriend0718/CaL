@@ -4,6 +4,7 @@ import sys
 CaLRepo = '/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
+from pyCostEstimator import Cost_Estimator
 
 import math
 import pandas as pd
@@ -18,10 +19,13 @@ import CoolProp.CoolProp as CP
 class CaLAnalyser(object):
     def __init__(self,parameters):
         self._parameters=parameters
-        self._calcs=CalcProblem(parameters)
+        self._calc=CalcProblem(parameters)
         self._carb=CarbProblem(parameters)
+        self._cost_estimator=Cost_Estimator()
 
     def solve(self):
+        # carbonator side 
+        #optimize the carbonator side according to the energy efficiency
         algorithm = ea.soea_DE_currentToBest_1_bin_templet(self._carb,
                                                 ea.Population(Encoding='RI', NIND=30),
                                                 MAXGEN=200,  # 最大进化代数。
@@ -30,13 +34,10 @@ class CaLAnalyser(object):
                                                 maxTrappedCount=100)  # # 进化停滞计数器最大上限值。
         algorithm.mutOper.F=0.95 #变异概率
         algorithm.recOper.XOVR = 0.95  # 重组概率
-
-        # 求解
         res = ea.optimize(algorithm, seed=1, verbose=True, drawing=1, outputMsg=True, drawLog=True, saveFlag=False)
         print(f"carbonator optimation results: {res}")
         best_vars=res["Vars"]
-      
-        # solve the plant status with the best choice   
+        # solve the carbonator results with the best choice   
         plant_results={}
         carb_opt_results={}
         carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
@@ -45,19 +46,30 @@ class CaLAnalyser(object):
         carb_results=self._carb.solve(carb_opt_results)
         plant_results["carb"]=carb_results
 
+        #calciner side 
         mass_camix_calc=carb_results["m_cao_unr_out"]+carb_results["m_caco3_out"]
-        calc_opt_results=minimize_scalar(self._calcs.opt,args=(mass_camix_calc,),
+        calc_opt_results=minimize_scalar(self._calc.opt,args=(mass_camix_calc,),
             method='bounded',bounds=(0, 1),tol=1e-5)
         calc_mfrac=calc_opt_results.x
         calc_inputs={}
         calc_inputs["mass_camix_in"]=mass_camix_calc
         calc_inputs["mfrac"]=calc_mfrac
-        calc_results=self._calcs.solve(calc_inputs)
+        calc_results=self._calc.solve(calc_inputs)
         plant_results["calc"]=calc_results
 
         return plant_results
 
     def analyze(self,plant_results):
+        results={}
+        results["economic"]=self.analyze_economic_metrics(plant_results)
+        results["energy"]=self.analyze_energy_metrics(plant_results)
+        return results
+
+    def analyze_economic_metrics(self,plant_results):
+        invCosts=self._cost_estimator.solve(plant_results)
+        return invCosts
+    
+    def analyze_energy_metrics(self,plant_results):
         analysis_results={}
         # thermal storage rate
         total_auxiliary_power=plant_results["carb"]["carb_auxiliary_power"]+\
@@ -79,14 +91,14 @@ class CaLAnalyser(object):
         M_CO2=44e-3
         mole_co2_in=mass_co2_i/M_CO2
         deconbonized_rate = plant_results["carb"]["deconbonized_rate"]
-        specific_sep_power=self.specific_seperation_power(T_flue_gas_in,flue_gas_composition,deconbonized_rate)
+        specific_sep_power=self._specific_seperation_power(T_flue_gas_in,flue_gas_composition,deconbonized_rate)
         total_sep_power=mole_co2_in*deconbonized_rate*specific_sep_power
         analysis_results["total_sep_power"]=total_sep_power
         T_amb=plant_results["carb"]["T_amb"]+273.15
         T_hot_water=plant_results["carb"]["T_water_reactor_out"]+273.15
         sep_eff1=total_sep_power/(total_power-analysis_results["Q_hot_water"]*(1-T_amb/T_hot_water))
         #not include the compression power for co2 storage
-        sep_eff2=total_sep_power/(total_power+plant_results["calc"]["compressor_power"]
+        sep_eff2=total_sep_power/(total_power+plant_results["calc"]["CO2_compression_train"]["compressor_power"]
                 -analysis_results["Q_hot_water"]*(1-T_amb/T_hot_water))
         analysis_results["sep_eff1"]=sep_eff1
         analysis_results["sep_eff2"]=sep_eff2
@@ -95,7 +107,7 @@ class CaLAnalyser(object):
         return analysis_results
 
     # J/mol (CO2)
-    def specific_seperation_power(self,T,comps,deconbonized_rate):
+    def _specific_seperation_power(self,T,comps,deconbonized_rate):
         R=8.3145
         T=T+273.15
         gibbs=0
@@ -119,11 +131,6 @@ class CaLAnalyser(object):
         return specific_sep_power
         
         
-
-        
-
-
-
 if __name__=="__main__":
         flue_gas_composition={}
         flue_gas_composition["co2"]=0.1338
@@ -140,7 +147,9 @@ if __name__=="__main__":
         parameters["T_water_reactor_out"]=80
 
         ca=CaLAnalyser(parameters)
+        results={}
         plant_results=ca.solve()
-        print(plant_results)
+        results["plant"]=plant_results
         analysis_results=ca.analyze(plant_results)
-        print(analysis_results)
+        results["metrics"]=analysis_results
+        print(results)
