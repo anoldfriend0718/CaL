@@ -177,7 +177,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
                 objs.append(obj)
                 #constrainst
                 c1=result["hot_utility"]-self._hot_util #
-                constraints.append([c1])
+                c2=-result["m_water_in"]
+                constraints.append([c1,c2])
         f=np.reshape(objs,(-1,1)) # 计算目标函数值矩阵
         CV=np.array(constraints) # 构建违反约束程度矩阵
         return f, CV

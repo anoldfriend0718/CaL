@@ -10,249 +10,8 @@ from pyPinch import PyPinch
 import pandas as pd
 import numpy as np
 import CoolProp.CoolProp as CP
-
-
-
-class Cp0mass_Wrapper(object):
-    def __init__(self, flue_gas_composistion, deconbonized_rate) -> None:
-        self.f_cao, self.f_caco3 = self._read_solid_properties()
-        total_mole_frac_s = flue_gas_composistion["co2"] + \
-            flue_gas_composistion["n2"] +\
-            flue_gas_composistion["o2"]
-        self._co2_mole_frac_s = flue_gas_composistion["co2"]/total_mole_frac_s
-        self._n2_mole_frac_s = flue_gas_composistion["n2"]/total_mole_frac_s
-        self._o2_mole_frac_s = flue_gas_composistion["o2"]/total_mole_frac_s
-        norm_flue_gas_composition={}
-        norm_flue_gas_composition["co2"] = self._co2_mole_frac_s
-        norm_flue_gas_composition["n2"] = self._n2_mole_frac_s
-        norm_flue_gas_composition["o2"] = self._o2_mole_frac_s
-        self._norm_flue_gas_composition_s=norm_flue_gas_composition
-
-        total_mole_frac_e = total_mole_frac_s-flue_gas_composistion["co2"]*deconbonized_rate
-        self._co2_mole_frac_e = flue_gas_composistion["co2"]*(1-deconbonized_rate)/total_mole_frac_e
-        self._n2_mole_frac_e = flue_gas_composistion["n2"]/total_mole_frac_e
-        self._o2_mole_frac_e = flue_gas_composistion["o2"]/total_mole_frac_e
-
-    # T: oC
-    # cp: J/kg/K
-    def cp0mass(self, material, T, p=1e5):
-        material = material.lower()
-        if material == "flue_gas":
-            cp = self._cp0mass_flue_gas(T, p)
-        elif material == "decarbonized_flue_gas":
-            cp = self._cp0mass_decarbonized_flue_gas(T, p)
-        elif material == "co2":
-            cp = self._cp0mass_co2(T, p)
-        elif material == "cao":
-            cp = self._cp0mass_cao(T)
-        elif material == "caco3":
-            cp = self._cp0mass_caco3(T)
-        else:
-            raise ValueError(f"Cp0mass of {material} is not supported")
-        return cp
-
-    # T: oC
-    # cp: J/kg/K
-    def cp0mass_mean(self, material, Ti, To, p=1e5, interval=10):
-        if To < Ti:
-            temp = Ti
-            Ti = To
-            To = temp
-        Ts = self._arange(Ti, To, interval)
-        cps = []
-        for T in Ts:
-            cp = self.cp0mass(material, T, p)
-            cps.append(cp)
-        cp_mean = np.mean(cps)
-        return cp_mean
-
-    def _read_solid_properties(self):
-        data_csv = f"{CaLRepo}/data/cpmass_cao_caco3.csv"
-        df = pd.read_csv(data_csv)
-        f_cao = interpolate.interp1d(df["TEMP"], df["CAO"])
-        f_caco3 = interpolate.interp1d(df["TEMP"], df["CACO3"])
-        return f_cao, f_caco3
-
-    def _cp0mass_cao(self, T):
-        cp = float(self.f_cao(T))
-        return cp
-
-    def _cp0mass_caco3(self, T):
-        cp = float(self.f_caco3(T))
-        return cp
-
-    def _cp0mass_co2(self, T, p):
-        fluid = 'REFPROP::co2'
-        cp = CP.PropsSI('C', 'T', T+273.15, 'P', p, fluid)  # J/kg/k
-        return cp
-
-    def _cp0mass_flue_gas(self, T, p):
-        fluid = self.get_flue_gas_refprop_name()
-        cp = self._cp0mass_gas(T, p, fluid)
-        return cp
-
-    def get_flue_gas_refprop_name(self):
-        fluid = f'REFPROP::co2[{self._co2_mole_frac_s}]&\
-                  nitrogen[{self._n2_mole_frac_s}]&\
-                  oxygen[{self._o2_mole_frac_s}]'.replace(" ", "")
-
-        return fluid
-
-    def _cp0mass_decarbonized_flue_gas(self, T, p):
-        fluid = self.get_decarbonized_flue_gas_refprop_name()
-        cp = self._cp0mass_gas(T, p, fluid)
-        return cp
-
-    def get_decarbonized_flue_gas_refprop_name(self):
-        fluid = f'REFPROP::co2[{self._co2_mole_frac_e}]&\
-            nitrogen[{self._n2_mole_frac_e}]&\
-            oxygen[{self._o2_mole_frac_e}]'.replace(" ", "")
-
-        return fluid
-
-    def _cp0mass_gas(self, T, p, fluid):
-        cp = CP.PropsSI('C', 'T', T+273.15, 'P', p, fluid)  # J/kg/k
-        return cp
-
-    def _arange(self, start, stop, step=1, endpoint=True):
-        arr = np.arange(start, stop, step)
-
-        if endpoint and arr[-1] != stop:
-            arr = np.concatenate([arr, [stop]])
-
-        return arr
-
-
-class Pinch_point_analyzer(object):
-    def __init__(self, inputs) -> None:
-        self._m_caco3 = inputs["m_caco3_out"]
-        self._m_cao_unr = inputs["m_cao_unr_out"]
-        self._m_cao_i = inputs["m_cao_in"]
-        self._m_decarbonized_flue_gas = inputs["m_deconbonized_flue_gas_out"]
-        self._m_flue_gas_in = inputs["m_flue_gas_in"]
-        self._m_water_in = inputs["m_water_in"]
-
-        self._T_carb = inputs["T_carb"]
-        self._p_amb = inputs["p_amb"]
-        self._T_amb = inputs["T_amb"]
-        self._T_flue_gas_compressor_out = inputs["T_flue_gas_compressor_out"]  # todo:T_flue_gas_compressor_out
-        self._p_flue_gas_compressor_out = inputs["p_flue_gas_compressor_out"]
-        self._T_flue_gas_reactor_in = inputs["T_flue_gas_reactor_in"]
-        self._T_cao_reactor_in = inputs["T_cao_reactor_in"]
-        self._T_water_reactor_in = inputs["T_water_reactor_in"]
-        self._T_decarbonized_flue_gas_out = inputs["T_decarbonized_flue_gas_out"]
-        self._p_decarbonized_flue_gas_out = self._p_amb
-        self._T_delta_pinch = inputs["T_delta_pinch"]
-
-        self._p_carb = inputs["p_carb"]
-        self._p_water = inputs["p_water"]
-
-        self._pw = Cp0mass_Wrapper(inputs["flue_gas_composition"], inputs["deconbonized_rate"])
-        self._flue_gas_composition = self._pw._norm_flue_gas_composition_s
-        self._deconbonized_rate = inputs["deconbonized_rate"]
-
-        pinch_point_data = {}
-        pinch_point_data["TSUPPLY"] = {}
-        pinch_point_data["TTARGET"] = {}
-        pinch_point_data["ENERGY"] = {}
-        pinch_point_data["FLOWRATE"] = {}
-        pinch_point_data["CP"] = {}
-
-        ## H1: CaCO3+CaO_unr
-        pinch_point_data["TSUPPLY"]["H_CaM"] = self._T_carb
-        pinch_point_data["TTARGET"]["H_CaM"] = self._T_amb
-        pinch_point_data["FLOWRATE"]["H_CaM"] = self._m_caco3+self._m_cao_unr
-        pinch_point_data["ENERGY"]["H_CaM"] =\
-            (self._m_caco3*self._pw.cp0mass_mean("caco3", self._T_amb, self._T_carb) +
-             self._m_cao_unr*self._pw.cp0mass_mean("cao", self._T_amb, self._T_carb)) * \
-            (self._T_carb-self._T_amb)
-        pinch_point_data["CP"]["H_CaM"] = pinch_point_data["ENERGY"]["H_CaM"] / \
-            (self._T_carb-self._T_amb)
-
-        # H2: decarbonized flue gas
-        pinch_point_data["TSUPPLY"]["H_flue_gas_decarb"] = self._T_carb
-        pinch_point_data["TTARGET"]["H_flue_gas_decarb"] = self._T_decarbonized_flue_gas_out
-        pinch_point_data["FLOWRATE"]["H_flue_gas_decarb"] = self._m_decarbonized_flue_gas
-        decarb_flue_gas_name = self._pw.get_decarbonized_flue_gas_refprop_name()
-        pinch_point_data["ENERGY"]["H_flue_gas_decarb"] = self._m_decarbonized_flue_gas * \
-            (CP.PropsSI('H', 'T', self._T_carb+273.15,
-                        'P', self._p_carb, decarb_flue_gas_name) -
-             CP.PropsSI('H', 'T', self._T_decarbonized_flue_gas_out + 273.15,
-                        'P', self._p_decarbonized_flue_gas_out, decarb_flue_gas_name))
-        pinch_point_data["CP"]["H_flue_gas_decarb"] = pinch_point_data["ENERGY"]["H_flue_gas_decarb"] / \
-            (self._T_carb-self._T_decarbonized_flue_gas_out)
-
-        # C1: flue gas
-        pinch_point_data["TSUPPLY"]["C_flue_gas"] = self._T_flue_gas_compressor_out  # todo:T_flue_gas_compressor_out
-        pinch_point_data["TTARGET"]["C_flue_gas"] = self._T_flue_gas_reactor_in
-        pinch_point_data["FLOWRATE"]["C_flue_gas"] = self._m_flue_gas_in
-        flue_gas_name = self._pw.get_flue_gas_refprop_name()
-        pinch_point_data["ENERGY"]["C_flue_gas"] = self._m_flue_gas_in * \
-            (CP.PropsSI('H', 'T', self._T_flue_gas_reactor_in+273.15,
-                        'P', self._p_carb, flue_gas_name) -
-             CP.PropsSI('H', 'T', self._T_flue_gas_compressor_out+273.15,
-                        'P', self._p_flue_gas_compressor_out, flue_gas_name))
-        pinch_point_data["CP"]["C_flue_gas"] = pinch_point_data["ENERGY"]["C_flue_gas"] / \
-            (self._T_flue_gas_reactor_in-self._T_flue_gas_compressor_out)
-
-        ## C2: CaO
-        pinch_point_data["TSUPPLY"]["C_CaO"] = self._T_amb
-        pinch_point_data["TTARGET"]["C_CaO"] = self._T_cao_reactor_in
-        pinch_point_data["FLOWRATE"]["C_CaO"] = self._m_cao_i
-        pinch_point_data["ENERGY"]["C_CaO"] = self._m_cao_i * \
-            self._pw.cp0mass_mean("cao", self._T_amb, self._T_cao_reactor_in) * \
-            (self._T_cao_reactor_in-self._T_amb)
-        pinch_point_data["CP"]["C_CaO"] = pinch_point_data["ENERGY"]["C_CaO"] / \
-            (self._T_cao_reactor_in-self._T_amb)
-
-        ## C3: water
-        pinch_point_data["TSUPPLY"]["C_water"] = self._T_amb
-        pinch_point_data["TTARGET"]["C_water"] = self._T_water_reactor_in
-        pinch_point_data["FLOWRATE"]["C_water"] = self._m_water_in
-        pinch_point_data["ENERGY"]["C_water"] = self._m_water_in * \
-            (CP.PropsSI('H', 'T', self._T_water_reactor_in+273.15,
-                        'P', self._p_water, "REFPROP::water") -
-             CP.PropsSI('H', 'T', self._T_amb+273.15,
-                        'P', self._p_water, "REFPROP::water"))
-        pinch_point_data["CP"]["C_water"] = pinch_point_data["ENERGY"]["C_water"] / \
-            (self._T_water_reactor_in-self._T_amb)
-
-        self._pinch_point_data = pinch_point_data
-
-    def write_pyPinch_data_csv(self, path):
-        data = {}
-        data["CP"] = self._pinch_point_data["CP"]
-        data["TSUPPLY"] = self._pinch_point_data["TSUPPLY"]
-        data["TTARGET"] = self._pinch_point_data["TTARGET"]
-        df = pd.DataFrame(data)
-        df["CP"] = df["CP"]/1000
-        df.to_csv(path, index=False)
-        with open(path, "r+") as fp:
-            lines = fp.readlines()
-            lines.insert(0, f'Tmin, {self._T_delta_pinch},\n')
-            fp.seek(0)
-            fp.writelines(lines)
-
-    def write_pyPinch_data_text(self):
-        data = {}
-        data["CP"] = self._pinch_point_data["CP"]
-        data["TSUPPLY"] = self._pinch_point_data["TSUPPLY"]
-        data["TTARGET"] = self._pinch_point_data["TTARGET"]
-        df = pd.DataFrame(data)
-        df["CP"] = df["CP"]/1000
-        text = df.to_string(index=False)
-        text = f'Tmin {self._T_delta_pinch} \n'+text
-        return text
-
-    def solve(self, input_text):
-        pinch = PyPinch(input_text)
-        pinch.shiftTemperatures()
-        pinch.constructTemperatureInterval()
-        pinch.constructProblemTable()
-        pinch.constructHeatCascade()
-        hot_util = pinch.hotUtility*1e3  # W
-        cold_uti = pinch.coldUtility*1e3  # W
-        return hot_util, cold_uti
+from Cp0massWrapper import Cp0mass_Wrapper
+from pyPinchPointAnalyzer import Pinch_point_analyzer
 
 
 class CarbonatorSide(object):
@@ -311,6 +70,11 @@ class CarbonatorSide(object):
                                              results["p_carb"],
                                              self._cao_conversion)
         results.update(carbonator_results)
+        # if m_water_in is less than 0, than skip the following computation and return a bad result
+        if results["m_water_in"]<0:
+            results["hot_utility"]=1e6
+            results["carb_heat_rec_eff"]=-1
+            return results
 
         # flue gas compressor
         flue_gas_name = self._pw.get_flue_gas_refprop_name()
@@ -339,7 +103,8 @@ class CarbonatorSide(object):
         # pinch point analysis
         pa = Pinch_point_analyzer(results)
         pa_text = pa.write_pyPinch_data_text()
-        hot_util, cold_util = pa.solve(pa_text)
+        hot_util, cold_util,total_HXA = pa.solve(pa_text)
+        results["total_HXA"]=total_HXA
         results["hot_utility"] = hot_util
         results["cold_utility"] = cold_util
         # cooling power
@@ -434,6 +199,7 @@ class CarbonatorSide(object):
         results["m_deconbonized_flue_gas_out"] = mass_deconbonized_flue_gas_out
         results["m_cao_unr_out"] = mass_cao_i-mass_cao_r
         results["m_caco3_out"] = mass_caco3_o
+        results["toatal_Q_heat"]=mole_cao_r*delta_H_Tr
         results["delta_H_Tcarb"]=delta_H_Tr
         return results
 
@@ -443,7 +209,6 @@ class CarbonatorSide(object):
 
     def cooling_power(self, cold_utility):
         return self._cooling_eff*cold_utility
-
 
 class CalcinerSide(object):
     def __init__(self, parameters) -> None:
@@ -662,6 +427,8 @@ class CalcinerSide(object):
     def co2_multiple_stage_compressor(self,m,Ti,pi,po,Tc,n):
         pr=pow(po/pi,1./n)
         i=1
+        pis=[]
+        pos=[]
         Ws=[]
         Tos=[]
         Qcs=[]
@@ -673,6 +440,8 @@ class CalcinerSide(object):
             hi_Ti= CP.PropsSI('H', 'T', To_i+273.15, 'P', po_i, "REFPROP::co2")
             hi_Tc = CP.PropsSI('H', 'T', Tc+273.15, 'P', po_i, "REFPROP::co2")
             Qc=m*(hi_Ti-hi_Tc)
+            pis.append(pi_i)
+            pos.append(po_i)
             Ws.append(W_i)
             Tos.append(To_i)
             Qcs.append(Qc)
@@ -682,6 +451,13 @@ class CalcinerSide(object):
         Wt=np.sum(Ws)
         Qct=np.sum(Qcs)
         results={}
+        results["compressor_Ti"]=Ti
+        results["compressor_To_stages"]=Tos
+        results["compressor_Tc"]=Tc
+        results["compressor_pi_stages"]=pis
+        results["compressor_po_stages"]=pos
+        results["compressor_power_stages"]=Ws
+        results["compressor_cooling_energy_stages"]=Qcs
         results["compressor_power"]=Wt*(-1)
         results["cooling_energy"]=Qct
         return results

@@ -6,8 +6,12 @@
 # Date              : 25.05.2019
 
 
+from ast import Raise
 import          csv
+import          math
 import          matplotlib.pyplot      as plt
+from            scipy.interpolate      import interp1d
+import          numpy                  as np
 
 
 class Streams:
@@ -136,9 +140,10 @@ class PyPinch:
         self._temperatures =             []
         self._deltaHHot =                []
         self._deltaHCold =               []
+        self.EnthaphyIntervalTable=            []
         self._options =                  {'debug': False, 'draw': False, 'csv': False}
 
-
+        self._streamsDataText=streamsDataText
         self.streams = Streams(streamsDataText)
         self.tmin = self.streams.tmin
 
@@ -484,14 +489,39 @@ class PyPinch:
                 self.shiftedCompositeDiagram['hot']['H'].append(totalHotH)
                 self.shiftedCompositeDiagram['hot']['T'].append(self._temperatures[i])
 
+        coldTs=list()
+        deltaHColds=list()
+        firstTemperature=0
+        for i in range(0, len(self._deltaHCold)):
+            if self._deltaHCold[i] > 0:
+                firstTemperature=self._temperatures[i]
+                break
+        coldTs.append(firstTemperature)
+        for i in range(0, len(self._deltaHCold)):
+            if self._deltaHCold[i] > 0:
+                coldTs.append(self._temperatures[i+1])
+                deltaHColds.append(self._deltaHCold[i])
+
         totalColdH = self.coldUtility
         self.shiftedCompositeDiagram['cold']['H'].append(totalColdH)
-        self.shiftedCompositeDiagram['cold']['T'].append(self._temperatures[0])
-        for i in range(1, len(self._temperatures)):
-            if self._deltaHCold[i - 1] != 0:
-                totalColdH = totalColdH + self._deltaHCold[i - 1]
-                self.shiftedCompositeDiagram['cold']['H'].append(totalColdH)
-                self.shiftedCompositeDiagram['cold']['T'].append(self._temperatures[i])
+        self.shiftedCompositeDiagram['cold']['T'].append(coldTs[0])
+        # try:
+        for i in range(1, len(coldTs)):
+            totalColdH = totalColdH + deltaHColds[i - 1]
+            self.shiftedCompositeDiagram['cold']['H'].append(totalColdH)
+            self.shiftedCompositeDiagram['cold']['T'].append(coldTs[i])
+        # except:
+        #     print(f"StreamData: {self._streamsDataText}\n")
+        #     print("\nTemperature Intervals: ")
+        #     i = 0
+        #     for interval in self.temperatureInterval:
+        #         print("Interval {} : {}".format(i, interval))
+        #         i = i + 1
+        #     print(f"self._temperatures: {self._temperatures}")
+        #     print(f"self._deltaHCold: {self._deltaHCold}")
+        #     print(f"coldTs: {coldTs}")
+        #     print(f"deltaHColds: {deltaHColds}")
+        #     raise
 
         self._temperatures.reverse()
 
@@ -651,6 +681,127 @@ class PyPinch:
                 writer.writerow([self.grandCompositeCurve['H'][i],
                     self.grandCompositeCurve['T'][i]])
 
+    def _myRound(self,a,ndigital=3):
+        return round(a,ndigital)
+    
+    def _lessThanOrEqual(self,a,b,eps=1e-3):
+        ret=b-a>0 or abs(a-b)<=eps
+        return ret
+    def _greaterThanOrEqual(self,a,b,eps=1e-3):
+        ret=a-b>0 or abs(a-b)<=eps
+        return ret 
+
+    # is range1 the subset of range2
+    def _isSubset(self,range1,range2):
+        ret=self._greaterThanOrEqual(range1[0],range2[0]) and self._lessThanOrEqual(range1[1],range2[1])
+        return ret 
+
+    def _searchStream(self,shiftedTRange, streams,type):
+        sts=[]
+        for i,stream in enumerate(streams):
+            # print(stream)
+            if (stream['type'] == type):
+                ss=stream['ss']
+                st=stream['st']
+                if ss>st:
+                    tmp=ss
+                    ss=st
+                    st=tmp
+                if self._isSubset(shiftedTRange,(ss,st)):
+                    sts.append(i)
+        return sts
+
+    
+    def constructEnthalpyIntervalTable(self):
+        # print("\n Solving Enthalpy Interval Table: ")
+        #calculate shiftTempeatures where the heat transfer between Hot and cold streams happens
+        #include the shiftTemperature where the public utility is used
+        shiftTemperatures=set()
+        streams={"HOT":[],"COLD":[]}
+        for i,stream in enumerate(self.streams):
+            if stream["type"]=="HOT":
+                streams["HOT"].append(i)
+            else:
+                streams["COLD"].append(i)
+        for interval in self.temperatureInterval:
+            streamNumbers=interval["streamNumbers"]
+            HotStreams=list(set(streamNumbers)&set(streams["HOT"]))
+            ColdStreams=list(set(streamNumbers)&set(streams["COLD"]))
+            if len(HotStreams)>0 and len(ColdStreams)>0:
+                shiftTemperatures.add(interval["t1"])
+                shiftTemperatures.add(interval["t2"])
+        shiftTemperatures=list(shiftTemperatures)
+        shiftTemperatures.sort()
+        # print(f"shiftTemperatures: {shiftTemperatures}")
+
+        #calculate Enthalphy Segments where the heat transfer between Hot and cold streams happens
+        hotHs=self.shiftedCompositeDiagram['hot']['H']
+        hotTs=self.shiftedCompositeDiagram['hot']['T']
+        coldHs=self.shiftedCompositeDiagram['cold']['H']
+        coldTs=self.shiftedCompositeDiagram['cold']['T']
+        HotTHCurve=interp1d(hotTs,hotHs,fill_value="extrapolate")
+        ColdTHCurve=interp1d(coldTs,coldHs,fill_value="extrapolate")
+        Hs=set()
+        for shiftTemperature in shiftTemperatures:
+            HotH=self._myRound(HotTHCurve(shiftTemperature).item())
+            ColdH=self._myRound(ColdTHCurve(shiftTemperature).item())
+            Hs.add(HotH)
+            Hs.add(ColdH)
+        Hs=list(Hs)
+        Hs.sort()
+        Hsegments=list()
+        for i in np.arange(0,len(Hs)-1,1):
+            pair=(Hs[i],Hs[i+1])
+            Hsegments.append(pair)
+        EffHSegments=list()
+        for seg in Hsegments:
+            isSig=seg[1]-seg[0]>1e-1
+            if isSig:
+                EffHSegments.append(seg)
+        # print(f"Hs: {Hs}")
+        # print(f"Hsegments: {Hsegments}")
+        # print(f"EffHSegments: {EffHSegments}")
+        ## calculate the  Hot and Cold stream temperature corresponding to the enthalphy segments
+        HotTSegments=list()
+        ColdTSegments=list()
+        HotHTcurve=interp1d(hotHs,hotTs,fill_value="extrapolate")
+        ColdHTCurve=interp1d(coldHs,coldTs,fill_value="extrapolate")
+        for seg in EffHSegments:
+            HotTSeg=(self._myRound(HotHTcurve(seg[0]).item()),self._myRound(HotHTcurve(seg[1]).item()))
+            HotTSegments.append(HotTSeg)
+            ColdTSeg=(self._myRound(ColdHTCurve(seg[0]).item()),self._myRound(ColdHTCurve(seg[1]).item()))
+            ColdTSegments.append(ColdTSeg)
+        ## calculate the hot and cold streams within the enthalpy segments
+        HotSegmentStreams=[]
+        ColdSegmentStreams=[]
+        for seg in HotTSegments:
+            ss=self._searchStream(seg,self.streams,"HOT")
+            HotSegmentStreams.append(ss)
+        for seg in ColdTSegments:
+            ss=self._searchStream(seg,self.streams,"COLD")
+            ColdSegmentStreams.append(ss)
+        # print(f"Shifted HotTSegments: {HotTSegments}")
+        # print(f"Shifted ColdTSegments: {ColdTSegments}")
+        ## contrust the enthaphy interval table
+        HIntervalTable=[]
+        for i,hseg in enumerate(EffHSegments):
+            record={}
+            record["Hs"]=hseg[0]
+            record["Ht"]=hseg[1]
+            record["hotshiftedTs"]=HotTSegments[i][1]
+            record["hotshiftedTt"]=HotTSegments[i][0]
+            record["coldshiftedTs"]=ColdTSegments[i][0]
+            record["coldshiftedTt"]=ColdTSegments[i][1]
+            record["hotStreams"]=HotSegmentStreams[i]
+            record["coldStreams"]=ColdSegmentStreams[i]
+            if len(HotSegmentStreams[i])>0 and len(ColdSegmentStreams[i])>0:
+                record["flux"]=record["Ht"]-record["Hs"]
+                deltaT1=record["hotshiftedTt"]-record["coldshiftedTs"]+self.tmin
+                deltaT2=record["hotshiftedTs"]-record["coldshiftedTt"]+self.tmin
+                record["LMTD"]=(deltaT1-deltaT2)/(math.log(deltaT1)-math.log(deltaT2))
+                HIntervalTable.append(record)
+        self.EnthaphyIntervalTable=HIntervalTable
+        return HIntervalTable
 
     def showPlots(self):
         plt.show()
@@ -665,6 +816,7 @@ class PyPinch:
         if 'csv' in options:
             self._options['csv'] = True
 
+        # try:
         self.shiftTemperatures()
         self.constructTemperatureInterval()
         self.constructProblemTable()
@@ -672,6 +824,79 @@ class PyPinch:
         self.constructShiftedCompositeDiagram()
         self.constructCompositeDiagram()
         self.constructGrandCompositeCurve()
+        self.constructEnthalpyIntervalTable()
+        # except Exception as e:
+           
+        #     print(f"\n Catch Exception with {e}")
+        #     print("\nStreams: ")
+        #     for stream in self.streams:
+        #         print(stream)
+        #     print("Tmin = {}".format(self.tmin))
+
+        #     print("\nTemperature Intervals: ")
+        #     i = 0
+        #     for interval in self.temperatureInterval:
+        #         print("Interval {} : {}".format(i, interval))
+        #         i = i + 1
+            
+        #     print("\nPinch Temperature (degC): {}".format(self.pinchTemperature))
+        #     print("Minimum Hot Utility (kW): {}".format(self.hotUtility))
+        #     print("Minimum Cold Utility (kW): {}".format(self.coldUtility))
+
+
+        #     print("\nShifted Composite Diagram Values: ")
+        #     print("DeltaH Hot: {}".format(self._deltaHHot))
+        #     print("DeltaH Cold: {}".format(self._deltaHCold))
+
+        #     print("")
+        #     print("Hot H: {}".format(self.shiftedCompositeDiagram['hot']['H']))
+        #     print("Hot T: {}".format(self.shiftedCompositeDiagram['hot']['T']))
+
+        #     print("")
+        #     print("Cold H: {}".format(self.shiftedCompositeDiagram['cold']['H']))
+        #     print("Cold T: {}".format(self.shiftedCompositeDiagram['cold']['T']))
+
+            
+            
+        #     raise
+            # print("\nProblem Table: ")
+            # i = 0
+            # for interval in self.problemTable:
+            #     print("Interval {} : {}".format(i, interval))
+            #     i = i + 1
+
+            # print("\nUnfeasible Heat Cascade: ")
+            # i = 0
+            # for interval in self.unfeasibleHeatCascade:
+            #     print("Interval {} : {}".format(i, interval))
+            #     i = i + 1
+
+            # print("\nFeasible Heat Cascade: ")
+            # i = 0
+            # for interval in self.heatCascade:
+            #     print("Interval {} : {}".format(i, interval))
+            #     i = i + 1
+
+            # print("\nPinch Temperature (degC): {}".format(self.pinchTemperature))
+            # print("Minimum Hot Utility (kW): {}".format(self.hotUtility))
+            # print("Minimum Cold Utility (kW): {}".format(self.coldUtility))
+
+
+            # print("\nShifted Composite Diagram Values: ")
+            # print("DeltaH Hot: {}".format(self._deltaHHot))
+            # print("DeltaH Cold: {}".format(self._deltaHCold))
+
+            # print("")
+            # print("Hot H: {}".format(self.shiftedCompositeDiagram['hot']['H']))
+            # print("Hot T: {}".format(self.shiftedCompositeDiagram['hot']['T']))
+
+            # print("")
+            # print("Cold H: {}".format(self.shiftedCompositeDiagram['cold']['H']))
+            # print("Cold T: {}".format(self.shiftedCompositeDiagram['cold']['T']))
+
+            
+            
+            
 
         if self._options['draw'] == True:
             self.showPlots()
