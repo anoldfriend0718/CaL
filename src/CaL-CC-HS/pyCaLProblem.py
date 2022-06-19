@@ -20,6 +20,13 @@ flue_gas_pressure_loss_ratio = 0.01 #https://doi.org/10.1016/j.ecmx.2019.100025
 decarbon_flue_gas_pressure_loss_ratio  = 0.02 #estimated based on flue_gas_pressure_loss_ratio
 carbonator_pressure_loss=15e3 #https://doi.org/10.1016/j.jclepro.2019.02.049
 
+calciner_thermal_loss=0.01
+deltaTmin_SSHX=20  #https://doi.org/10.1016/j.apenergy.2016.04.053
+deltaTmin_SGHX=15  #https://doi.org/10.1016/j.apenergy.2016.04.053
+T_cooling_co2=20   #https://doi.org/10.1016/j.apenergy.2016.04.053
+n_compression=6    #https://doi.org/10.1016/j.apenergy.2016.04.053
+HTC_SSHX=200
+HTC_SGHX=300 #https://doi.org/10.1016/j.ecmx.2020.100039
 
 class CalcProblem(object):
     def __init__(self,parameters) -> None:
@@ -28,22 +35,6 @@ class CalcProblem(object):
         self._cao_conversion=parameters["cao_conversion"]
         self._flue_gas_composistion=parameters["flue_gas_composition"]
         self._decarbonized_rate=parameters["decarbonized_rate"]
-        ## fixed parameters
-        self._calciner_eff=0.99
-        self._deltaTmin_SSHX=20
-        self._deltaTmin_SGHX=15
-        self._T_cooling_co2=20
-        self._n_compression=6
-
-        ## global parameters
-        self._isentropic_eff_mc=isentropic_eff_mc
-        self._mechanical_eff=mechanical_eff
-        self._convey_consumption=convey_consumption
-        self._storage_carbonator_distance=storage_carbonator_distance
-        self._T_amb=T_amb
-        self._p_amb=p_amb
-        self._cooling_eff=cooling_eff
-        self._p_co2_storage=p_co2_storage
 
         calc_para=self._compose_calc_parameters()
         self._calcs=CalcinerSide(calc_para)
@@ -52,22 +43,24 @@ class CalcProblem(object):
     def _compose_calc_parameters(self):
         parameters={}
         parameters["flue_gas_composition"] = self._flue_gas_composistion
-        parameters["isentropic_eff_mc"] = self._isentropic_eff_mc
-        parameters["mechanical_eff"] = self._mechanical_eff
+        parameters["isentropic_eff_mc"] = isentropic_eff_mc
+        parameters["mechanical_eff"] = mechanical_eff
         parameters["decarbonized_rate"] = self._decarbonized_rate
         parameters["cao_conversion"] = self._cao_conversion
-        parameters["calciner_eff"] = self._calciner_eff
-        parameters["convey_consumption"] = self._convey_consumption
-        parameters["storage_carbonator_distance"] = self._storage_carbonator_distance
-        parameters["T_amb"] = self._T_amb
-        parameters["p_amb"] = self._p_amb
+        parameters["calciner_eff"] = 1-calciner_thermal_loss
+        parameters["convey_consumption"] = convey_consumption
+        parameters["storage_carbonator_distance"] = storage_carbonator_distance
+        parameters["T_amb"] = T_amb
+        parameters["p_amb"] = p_amb
         parameters["T_calc"]= self._T_calc
-        parameters["deltaTmin_SSHX"]=self._deltaTmin_SSHX
-        parameters["deltaTmin_SGHX"]=self._deltaTmin_SGHX
-        parameters["T_cooling_co2"]=self._T_cooling_co2
-        parameters["p_co2_storage"]=self._p_co2_storage
-        parameters["n_compression"]=self._n_compression
-        parameters["cooling_eff"]=self._cooling_eff
+        parameters["deltaTmin_SSHX"]=deltaTmin_SSHX
+        parameters["deltaTmin_SGHX"]=deltaTmin_SGHX
+        parameters["T_cooling_co2"]=T_cooling_co2
+        parameters["p_co2_storage"]=p_co2_storage
+        parameters["n_compression"]=n_compression
+        parameters["cooling_eff"]=cooling_eff
+        parameters["HTC_SSHX"]=HTC_SSHX
+        parameters["HTC_SGHX"]=HTC_SGHX
         return parameters
 
     def solve(self,inputs):
@@ -77,8 +70,6 @@ class CalcProblem(object):
     def opt(self, m,mfrac):
         results=self._calcs.calciner(mfrac,m)
         return results["We_calc"]
-
-
 
 
 class CarbProblem(ea.Problem):  # 继承Problem父类

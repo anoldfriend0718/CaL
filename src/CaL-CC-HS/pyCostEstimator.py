@@ -16,8 +16,12 @@ class Cost_Estimator(object):
         # CO2 compression train
         PCCT=-design["calc"]["CO2_compression_train"]["compressor_power"]
         invCosts["CCO2ct"]=self._cost_CO2_compression_train(PCCT)
-        # TODO: HEN
-        # TODO: CO2 fan
+ 
+        # Heat tranfer network
+        AHENCalc=design["calc"]["total_HEN_area"]
+        pHENCalc=design["calc"]["p_calc"]
+        invCosts["CHENCalc"]=self._cost_HEN(AHENCalc,pHENCalc)
+
         # TODO: solid conveying system
         
         # # Carbonator side 
@@ -38,8 +42,8 @@ class Cost_Estimator(object):
         invCosts["CFF"]=self._cost_flue_gas_fan(PFF)
         # Heat tranfer network
         AHENCarb=design["carb"]["total_HEN_area"]
-        pHEN=design["carb"]["p_carb"]
-        invCosts["CHENCarb"]=self._cost_HEN(AHENCarb,pHEN)
+        pHENCarb=design["carb"]["p_carb"]
+        invCosts["CHENCarb"]=self._cost_HEN(AHENCarb,pHENCarb)
         # TODO: solid conveying system
 
         # summary 

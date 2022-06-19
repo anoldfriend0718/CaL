@@ -5,6 +5,7 @@ CaLRepo = '/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
 
+import math
 from scipy import interpolate
 from pyPinch import PyPinch
 import pandas as pd
@@ -240,6 +241,8 @@ class CalcinerSide(object):
         self._p_calc = self._p_amb
         self._deltaTmin_SSHX = parameters["deltaTmin_SSHX"]
         self._deltaTmin_SGHX = parameters["deltaTmin_SGHX"]
+        self._HTC_SSHX = parameters["HTC_SSHX"]
+        self._HTC_SGHX = parameters["HTC_SGHX"]
         self._cooling_eff=parameters["cooling_eff"]
         self._delta_H_Tref = 178e3  # J/mole CaO
 
@@ -280,9 +283,9 @@ class CalcinerSide(object):
         mass_camix_2 = (1-mfrac)*m
 
         # Hot CaO ~ cold CaCO3 heat exchanger
-        T_camix_1, T_cao_o = self.cao_camix_heat_exchanger(mass_camix_1, mass_cao_out)
+        T_camix_1, T_cao_o,HXA_cao_camix = self.cao_camix_heat_exchanger(mass_camix_1, mass_cao_out)
         # Hot CO2 ~ cold CaCO3 heat exchanger
-        T_camix_2, T_co2_o = self.co2_camix_heat_exchanger(mass_camix_2, mass_co2_out)
+        T_camix_2, T_co2_o,HXA_co2_camix = self.co2_camix_heat_exchanger(mass_camix_2, mass_co2_out)
         # CaCO3 mixer
         T_camix_reactor_in = self.caco3_mixer(mass_camix_1, T_camix_1, mass_camix_2, T_camix_2)
         # calciner
@@ -293,6 +296,7 @@ class CalcinerSide(object):
         We = Qe/self._calciner_eff
 
         results = {}
+        results["p_calc"]=self._p_amb
         results["mfrac"]=mfrac
         results["mass_camix_1"]=mass_camix_1
         results["mass_camix_2"]=mass_camix_2
@@ -306,9 +310,10 @@ class CalcinerSide(object):
         results["delta_H_Tcalc"] = delta_H_r_Tcalc
         results["Qe_calc"] = Qe
         results["We_calc"] = We
+        results["HEN_area_cao_camix"]=HXA_cao_camix
+        results["HEN_area_co2_camix"]=HXA_co2_camix
+        results["total_HEN_area"]=HXA_cao_camix+HXA_co2_camix
         return results
-
-
 
 
     def reaction_heat(self):
@@ -336,9 +341,10 @@ class CalcinerSide(object):
         cp_cao_mean_Tamb_Tr = self._pw.cp0mass_mean("cao", T_camix_in, T_cao_in)
         cp_camix_mean_Tamb_Tr = self.cp_camix_mean(T_camix_in, T_cao_in, self._cao_conversion)
         deltaTmin = self._deltaTmin_SSHX
-        T_camix_out_n_1, T_cao_out_n_1 = self.SS_heat_exchanger(
-            m_camix, cp_camix_mean_Tamb_Tr, m_cao, cp_cao_mean_Tamb_Tr,
-            T_camix_in, T_cao_in, deltaTmin)
+        results= self.SS_heat_exchanger(m_camix, cp_camix_mean_Tamb_Tr, m_cao, 
+            cp_cao_mean_Tamb_Tr,T_camix_in, T_cao_in, deltaTmin)
+        T_camix_out_n_1=results["Toc"]
+        T_cao_out_n_1=results["Toh"]
         T_camix_out_n = 0
         T_cao_out_n = 0
         eps = 1.5
@@ -348,10 +354,12 @@ class CalcinerSide(object):
             T_cao_out_n = T_cao_out_n_1
             cp_camix_mean = self.cp_camix_mean(T_camix_in, T_camix_out_n, self._cao_conversion)
             cp_cao_mean = self._pw.cp0mass_mean("cao", T_cao_in, T_cao_out_n)
-            T_camix_out_n_1, T_cao_out_n_1 = self.SS_heat_exchanger(
-                m_camix, cp_camix_mean, m_cao, cp_cao_mean,
+            results = self.SS_heat_exchanger(m_camix, cp_camix_mean, m_cao, cp_cao_mean,
                 T_camix_in, T_cao_in, deltaTmin)
-        return T_camix_out_n_1, T_cao_out_n_1
+            T_camix_out_n_1=results["Toc"]
+            T_cao_out_n_1=results["Toh"]
+        HXA=results["HXA"]
+        return T_camix_out_n_1, T_cao_out_n_1,HXA
 
     def SS_heat_exchanger(self, mc, cpc, mh, cph, Tic, Tih, deltaTmin):
         if mc*cpc > mh*cph:
@@ -360,15 +368,29 @@ class CalcinerSide(object):
         else:
             Toc = Tih-deltaTmin
             Toh = Tih-mc*cpc*(Toc-Tic)/(mh*cph)
-        return Toc, Toh
+        Q=mc*cpc*(Toc-Tic)
+        deltaT1=(Tih-Toc)/2
+        deltaT2=(Toh-Tic)/2
+        lmtd=(deltaT1-deltaT2)/(math.log(deltaT1)-math.log(deltaT2))
+        HXA=Q/(self._HTC_SSHX*lmtd)
+        results={}
+        results["Toc"]=Toc
+        results["Toh"]=Toh
+        results["Q"]=Q
+        results["LMTD"]=lmtd
+        results["HXA"]=HXA
+        return results
 
     def co2_camix_heat_exchanger(self, m_camin, m_co2):
         T_camix_in = self._T_amb
         T_co2_in = self._T_calc
         cp_camix_mean_Tamb_Tr = self.cp_camix_mean(T_camix_in, T_co2_in, self._cao_conversion)
         deltaTmin = self._deltaTmin_SGHX
-        T_camix_out_n_1, T_co2_out_n_1 = self.SG_heat_exchanger(m_camin, cp_camix_mean_Tamb_Tr, m_co2,
-                                                                T_camix_in, T_co2_in, self._p_calc, deltaTmin)
+        results = self.SG_heat_exchanger(m_camin, cp_camix_mean_Tamb_Tr, m_co2,
+                        T_camix_in, T_co2_in, self._p_calc, deltaTmin)
+        T_camix_out_n_1=results["Toc"]
+        T_co2_out_n_1=results["Toh"]
+
         T_camix_out_n = 0
         T_co2_out_n = 0
         eps = 1.5
@@ -377,9 +399,12 @@ class CalcinerSide(object):
             T_camix_out_n = T_camix_out_n_1
             T_co2_out_n = T_co2_out_n_1
             cp_camix_mean = self.cp_camix_mean(T_camix_in, T_camix_out_n, self._cao_conversion)
-            T_camix_out_n_1, T_co2_out_n_1 = self.SG_heat_exchanger(m_camin, cp_camix_mean, m_co2,
-                                                                    T_camix_in, T_co2_in, self._p_calc, deltaTmin)
-        return T_camix_out_n_1, T_co2_out_n_1
+            results = self.SG_heat_exchanger(m_camin, cp_camix_mean, m_co2,
+                              T_camix_in, T_co2_in, self._p_calc, deltaTmin)
+            T_camix_out_n_1=results["Toc"]
+            T_co2_out_n_1=results["Toh"]
+        HXA=results["HXA"]
+        return T_camix_out_n_1, T_co2_out_n_1,HXA
 
     def SG_heat_exchanger(self, mc, cpc, mh, Tic, Tih, pcalc, deltaTmin):
         # Hot fluid is Gas  CO2:
@@ -399,7 +424,19 @@ class CalcinerSide(object):
             cph = Qc/(mh*(Tih-Toh))
             if mc*cpc > mh*cph:
                 raise Exception("some error happen in SG_heat_exchanger")
-        return Toc, Toh
+        
+        Q=mc*cpc*(Toc-Tic)
+        deltaT1=Tih-Toc
+        deltaT2=Toh-Tic
+        lmtd=(deltaT1-deltaT2)/(math.log(deltaT1)-math.log(deltaT2))
+        HXA=Q/(self._HTC_SGHX*lmtd)
+        results={}
+        results["Toc"]=Toc
+        results["Toh"]=Toh
+        results["Q"]=Q
+        results["LMTD"]=lmtd
+        results["HXA"]=HXA
+        return results
 
     def caco3_mixer(self, m1, T1, m2, T2):
         Ton = 0
