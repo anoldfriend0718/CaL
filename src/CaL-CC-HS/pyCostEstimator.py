@@ -51,13 +51,6 @@ class Cost_Estimator(object):
 
         return invCosts
 
-
-
-
-        
-
-        
-
     def _cost_entrained_flow_carbonator(self,Vi):
         #reference: https://doi.org/10.1016/j.ijggc.2019.01.005
         #the referred Year: 2014

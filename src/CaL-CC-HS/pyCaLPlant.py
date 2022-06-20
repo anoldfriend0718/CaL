@@ -6,9 +6,6 @@ CaLRepo = '/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
 sys.path.append(f"{CaLRepo}/utilities/")
 
 import math
-from scipy import interpolate
-from pyPinch import PyPinch
-import pandas as pd
 import numpy as np
 import CoolProp.CoolProp as CP
 from Cp0massWrapper import Cp0mass_Wrapper

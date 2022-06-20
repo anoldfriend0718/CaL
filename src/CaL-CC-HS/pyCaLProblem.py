@@ -1,8 +1,7 @@
-from pyCaLPlant import CalcinerSide, CarbonatorSide
-
 import geatpy as ea
 import numpy as np
 import concurrent.futures
+from pyCaLPlant import CalcinerSide, CarbonatorSide
 
 # global parameters
 T_amb = 20

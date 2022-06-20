@@ -4,16 +4,17 @@ import sys
 CaLRepo = '/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
-from pyCostEstimator import Cost_Estimator
+
 
 import math
 import pandas as pd
-import geatpy as ea
-import shutil
 from scipy.optimize import minimize_scalar
-from pyCaLPlant import CalcinerSide,CarbonatorSide,Pinch_point_analyzer
-from pyCaLProblem import CarbProblem,CalcProblem
+import geatpy as ea
 import CoolProp.CoolProp as CP
+
+from pyCaLProblem import CarbProblem,CalcProblem
+from pyCostEstimator import Cost_Estimator
+
 
 
 class CaLAnalyser(object):
