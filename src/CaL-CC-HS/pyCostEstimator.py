@@ -27,16 +27,14 @@ class Cost_Estimator(object):
         # # Carbonator side 
         # # carbonator
         # # if the reaction heat is recovered at the carbonator wall
-        # if design["calc"]["HTCW"]==1:
-        #     Qcarb=-design["carb"]["Q_carbonation"]
-        #     invCosts["Ccarb"]=self._cost_fluidized_bed_carbonator(Qcarb)
-        # else:
-        #     rho_CaO=3297.63  # data from Aspen
-        #     V_CaO=design["carb"]["m_cao_in"]/rho_CaO
-        #     invCosts["Ccarb"]=self._cost_entrained_flow_carbonator(V_CaO)
+        if design["carb"]["HTCW"]==1:
+            Qcarb=-design["carb"]["Q_carbonation"]
+            invCosts["Ccarb"]=self._cost_fluidized_bed_carbonator(Qcarb)
+        else:
+            rho_CaO=3297.63  # data from Aspen
+            V_CaO=design["carb"]["m_cao_in"]/rho_CaO
+            invCosts["Ccarb"]=self._cost_entrained_flow_carbonator(V_CaO)
         
-        Qcarb=-design["carb"]["Q_carbonation"]
-        invCosts["Ccarb"]=self._cost_fluidized_bed_carbonator(Qcarb)
         # Flue gas fan 
         PFF=-design["carb"]["flue_gas_fan_power"]
         invCosts["CFF"]=self._cost_flue_gas_fan(PFF)

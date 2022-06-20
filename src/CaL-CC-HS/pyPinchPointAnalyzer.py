@@ -38,6 +38,8 @@ class Pinch_point_analyzer(object):
         self._p_carb_o = inputs["p_carb_o"]
         self._p_carb_i = inputs["p_carb_i"]
         self._p_water = inputs["p_water"]
+        self._HTCW=inputs["HTCW"]
+        self._HRCP=inputs["HRCP"]
 
         self._pw = Cp0mass_Wrapper(inputs["flue_gas_composition"], inputs["deconbonized_rate"])
         self._flue_gas_composition = self._pw._norm_flue_gas_composition_s
@@ -98,16 +100,17 @@ class Pinch_point_analyzer(object):
             (self._T_cao_reactor_in-self._T_amb)
 
         ## C3: water
-        pinch_point_data["TSUPPLY"]["C_water"] = self._T_amb
-        pinch_point_data["TTARGET"]["C_water"] = self._T_water_reactor_in
-        pinch_point_data["FLOWRATE"]["C_water"] = self._m_water_in
-        pinch_point_data["ENERGY"]["C_water"] = self._m_water_in * \
-            (CP.PropsSI('H', 'T', self._T_water_reactor_in+273.15,
-                        'P', self._p_water, "REFPROP::water") -
-             CP.PropsSI('H', 'T', self._T_amb+273.15,
-                        'P', self._p_water, "REFPROP::water"))
-        pinch_point_data["CP"]["C_water"] = pinch_point_data["ENERGY"]["C_water"] / \
-            (self._T_water_reactor_in-self._T_amb)
+        if self._HRCP==1:
+            pinch_point_data["TSUPPLY"]["C_water"] = self._T_amb
+            pinch_point_data["TTARGET"]["C_water"] = self._T_water_reactor_in
+            pinch_point_data["FLOWRATE"]["C_water"] = self._m_water_in
+            pinch_point_data["ENERGY"]["C_water"] = self._m_water_in * \
+                (CP.PropsSI('H', 'T', self._T_water_reactor_in+273.15,
+                            'P', self._p_water, "REFPROP::water") -
+                CP.PropsSI('H', 'T', self._T_amb+273.15,
+                            'P', self._p_water, "REFPROP::water"))
+            pinch_point_data["CP"]["C_water"] = pinch_point_data["ENERGY"]["C_water"] / \
+                (self._T_water_reactor_in-self._T_amb)
 
         self._pinch_point_data = pinch_point_data
 

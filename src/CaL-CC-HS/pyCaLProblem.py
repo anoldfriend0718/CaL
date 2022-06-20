@@ -82,6 +82,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         self._decarbonized_rate=carbonator_parameters["decarbonized_rate"]
         self._T_flue_gas=carbonator_parameters["T_flue_gas"]
         self._T_water_reactor_out=carbonator_parameters["T_water_reactor_out"]
+        self._HTCW=carbonator_parameters["HTCW"]
+        self._HRCP=carbonator_parameters["HRCP"]
 
         # initialize plant
         carbonator_parameters=self._compose_carbonator_parameters()
@@ -93,22 +95,47 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         # for concurrent worker
         self._max_map_executor=10
 
+        M, maxormins, Dim, varTypes, lb, ub, lbin, ubin = self._compose_generic_algorithm_paramters()
+        # 调用父类构造方法完成实例化
+        ea.Problem.__init__(self, name, M, maxormins, Dim, varTypes, lb, ub, lbin, ubin)
+
+    def _compose_generic_algorithm_paramters(self):
         ## generic algorithm parameters 
         M = 1  # 优化目标个数
         maxormins = [-1] * M  # 初始化maxormins（目标最小最大化标记列表，1：最小化该目标；-1：最大化该目标）
-        Dim = 3  # 初始化Dim（决策变量维数）
-        varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
+        if self._HTCW==1 and self._HRCP==1:
+            Dim = 3  # 初始化Dim（决策变量维数）
+            varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
+            lb = [T_amb+delta_T_pinch, #T_cao,in
+                T_amb+delta_T_pinch, #T_flue_gas,in
+                T_amb]  # T_cold water  决策变量下界
+            ub = [self._T_carb-delta_T_pinch, #T_cao,in
+                self._T_carb-delta_T_pinch, #T_flue_gas,in
+                self._T_water_reactor_out]  #  T_hot water 决策变量上界
+            lbin = [1,0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
+            ubin = [1,1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
+        elif self._HTCW==1 and self._HRCP==0:
+            Dim = 2  # 初始化Dim（决策变量维数）
+            varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
+            lb = [T_amb+delta_T_pinch, #T_cao,in
+                T_amb+delta_T_pinch] #T_flue_gas,in
+            ub = [self._T_carb-delta_T_pinch, #T_cao,in
+                self._T_carb-delta_T_pinch] #T_flue_gas,in
+            lbin = [1,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
+            ubin = [1,1]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
+        elif self._HTCW==0 and self._HRCP==1:
+            Dim = 2  # 初始化Dim（决策变量维数）
+            varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
+            lb = [T_amb+delta_T_pinch, #T_flue_gas,in
+                0]  # m_water,in
+            ub = [self._T_carb-delta_T_pinch, #T_flue_gas,in
+                10] # m_water,in
+            lbin = [0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
+            ubin = [1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
+        else:
+            raise ValueError("Invalid HTCW or HRCP!")
 
-        lb = [T_amb+delta_T_pinch, #T_cao,in
-              T_amb+delta_T_pinch, #T_flue_gas,in
-              T_amb]  # T_cold water  决策变量下界
-        ub = [self._T_carb-delta_T_pinch, #T_cao,in
-              self._T_carb-delta_T_pinch, #T_flue_gas,in
-              self._T_water_reactor_out]  #  T_hot water 决策变量上界
-        lbin = [1,1,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
-        ubin = [1,1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
-        # 调用父类构造方法完成实例化
-        ea.Problem.__init__(self, name, M, maxormins, Dim, varTypes, lb, ub, lbin, ubin)
+        return M,maxormins,Dim,varTypes,lb,ub,lbin,ubin
 
     def _compose_carbonator_parameters(self):
         parameters={}
@@ -134,6 +161,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["T_amb"]=T_amb 
         parameters["p_amb"] = p_amb
         parameters["p_water"] = parameters["p_amb"]
+        parameters["HTCW"]=self._HTCW
+        parameters["HRCP"]=self._HRCP
 
         return parameters
 
@@ -147,22 +176,48 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
             case_num=Vars.shape[0]
             # map
             for i in np.arange(0,case_num,1):
-                input={}
-                input["T_flue_gas_reactor_in"]=Vars[i,0]
-                input["T_cao_reactor_in"]=Vars[i,1]
-                input["T_water_reactor_in"]=Vars[i,2]
-                future=map_executor_pool.submit(self._carbonatorSide.solve,input)
+                inputs={}
+                if self._HTCW==1 and self._HRCP==1:
+                    inputs["T_flue_gas_reactor_in"]=Vars[i,0]
+                    inputs["T_cao_reactor_in"]=Vars[i,1]
+                    inputs["T_water_reactor_in"]=Vars[i,2]
+                elif self._HTCW==1 and self._HRCP==0:
+                    inputs["T_flue_gas_reactor_in"]=Vars[i,0]
+                    inputs["T_cao_reactor_in"]=Vars[i,1]
+                elif self._HTCW==0 and self._HRCP==1:
+                    inputs["T_flue_gas_reactor_in"]=Vars[i,0]
+                    inputs["m_water_in"]=Vars[i,1]
+                else:
+                    raise ValueError("Invalid HTCW or HRCP!")
+                future=map_executor_pool.submit(self._carbonatorSide.solve,inputs)
                 futures.append(future)
             # reduce
             for _, future in enumerate(futures):
                 result=future.result()
-                # objective function
-                obj=result["carb_heat_rec_eff"]
-                objs.append(obj)
-                #constrainst
-                c1=result["hot_utility"]-self._hot_util #
-                c2=-result["m_water_in"]
-                constraints.append([c1,c2])
+                if self._HTCW==1:
+                    # objective function
+                    obj=result["carb_heat_rec_eff"]
+                    objs.append(obj)
+                    #constrainst
+                    c0=1-result["is_succeed"]
+                    c1=result["hot_utility"]-self._hot_util #
+                    c2=-result["m_water_in"]
+                    constraints.append([c0,c1,c2])
+                elif self._HRCP==1:
+                    # objective function
+                    obj=result["carb_heat_rec_eff"]
+                    objs.append(obj)
+                    #constrainst
+                    c0=1-result["is_succeed"]
+                    c1=result["hot_utility"]-self._hot_util #
+                    c2=result["T_cao_reactor_in"]-(self._T_carb-delta_T_pinch)
+                    # c3=T_amb+delta_T_pinch-result["T_cao_reactor_in"]
+                    
+                    constraints.append([c0,c1,c2])
+
+                else:
+                    raise ValueError("Invalid HTCW or HRCP!")
+
         f=np.reshape(objs,(-1,1)) # 计算目标函数值矩阵
         CV=np.array(constraints) # 构建违反约束程度矩阵
         return f, CV

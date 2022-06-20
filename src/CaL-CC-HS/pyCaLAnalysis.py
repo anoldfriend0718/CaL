@@ -28,23 +28,28 @@ class CaLAnalyser(object):
         # carbonator side 
         #optimize the carbonator side according to the energy efficiency
         algorithm = ea.soea_DE_currentToBest_1_bin_templet(self._carb,
-                                                ea.Population(Encoding='RI', NIND=30),
+                                                ea.Population(Encoding='RI', NIND=30), #它的取值范围一般在[5D，10D]之间（D为每个个体的维度）。
                                                 MAXGEN=200,  # 最大进化代数。
                                                 logTras=1, #,  # 表示每隔多少代记录一次日志信息，0表示不记录。
                                                 trappedValue=1e-6,  # 单目标优化陷入停滞的判断阈值。
                                                 maxTrappedCount=100)  # # 进化停滞计数器最大上限值。
-        algorithm.mutOper.F=0.95 #变异概率
-        algorithm.recOper.XOVR = 0.95  # 重组概率
+         #变异概率 #[0.4，0.95]
+         #增大F 可以加大算法的搜索空间，提高种群多样性，有利于算法搜索最优解，但会降低收敛速率。
+         #减小F 可以增加算法的开发能力，提高算法的收敛速度，但同时增加陷入早熟收敛的风险。
+        algorithm.mutOper.F=0.95
+        #交叉概率因子(CR)起着平衡算法全局与局部搜索能力的作用。它的取值范围一般在[0.3, 0.9]之间。
+        #增大CR 可以提高种群多样性，但可能会造成算法后期收敛速度变慢。
+        #减小CR 有利于分析个体各维可分离问题
+        algorithm.recOper.XOVR = 0.9  # 重组概率
         res = ea.optimize(algorithm, seed=1, verbose=True, drawing=1, outputMsg=True, drawLog=True, saveFlag=False)
         print(f"carbonator optimation results: {res}")
+        print(f'lastPop:\n {res["lastPop"].Phen}')
         best_vars=res["Vars"]
         # solve the carbonator results with the best choice   
-        plant_results={}
-        carb_opt_results={}
-        carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
-        carb_opt_results["T_cao_reactor_in"]=best_vars[0,1]
-        carb_opt_results["T_water_reactor_in"]=best_vars[0,2]
+        
+        carb_opt_results=self._compose_carb_opt_results(best_vars)
         carb_results=self._carb.solve(carb_opt_results)
+        plant_results={}
         plant_results["carb"]=carb_results
 
         #calciner side 
@@ -60,6 +65,23 @@ class CaLAnalyser(object):
 
         return plant_results
 
+    def _compose_carb_opt_results(self,best_vars):
+        carb_opt_results={}
+        if self._parameters["HTCW"]==1 and self._parameters["HRCP"]==1:
+            carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
+            carb_opt_results["T_cao_reactor_in"]=best_vars[0,1]
+            carb_opt_results["T_water_reactor_in"]=best_vars[0,2]
+        elif self._parameters["HTCW"]==1 and self._parameters["HRCP"]==0:
+            carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
+            carb_opt_results["T_cao_reactor_in"]=best_vars[0,1]
+        elif self._parameters["HTCW"]==0 and self._parameters["HRCP"]==1:
+            carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
+            carb_opt_results["m_water_in"]=best_vars[0,1]
+        else:
+            raise ValueError("Invalid HTCW or HRCP!")
+
+        return carb_opt_results
+    
     def analyze(self,plant_results):
         results={}
         results["economic"]=self.analyze_economic_metrics(plant_results)
@@ -146,6 +168,8 @@ if __name__=="__main__":
         parameters["T_calc"]=900
         parameters["cao_conversion"]=0.5
         parameters["T_water_reactor_out"]=80
+        parameters["HTCW"]=0
+        parameters["HRCP"]=1
 
         ca=CaLAnalyser(parameters)
         results={}

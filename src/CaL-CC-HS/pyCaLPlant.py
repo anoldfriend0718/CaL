@@ -41,8 +41,11 @@ class CarbonatorSide(object):
         self._p_flue_gas_i = self._p_amb
         self._delta_H_Tref = -178e3  # J/mole CaO
         self._delta_h = 3178.6*1000  # J/kg CaO
+        self._HTCW=parameters["HTCW"]
+        self._HRCP=parameters["HRCP"]
 
-    def solve(self, input):
+
+    def solve(self, inputs):
         results = {}
         results["flue_gas_composition"] = self._flue_gas_composition
         results["deconbonized_rate"] = self._decarbonized_rate
@@ -60,23 +63,17 @@ class CarbonatorSide(object):
         results["p_carb"]=(results["p_carb_o"]+results["p_carb_i"])/2
         results["p_water"] = self._p_water
         results["cao_conversion"] = self._cao_conversion
-        results = {**input, **results}
+        results["HTCW"]=self._HTCW
+        results["HRCP"]=self._HRCP
+        results = {**inputs, **results}
 
        # carbonator(self, Ti_flue_gas, Ti_cao, Ti_water,To_water,Tcarb, pcarb, X):
-        carbonator_results = self.carbonator(input["T_flue_gas_reactor_in"],
-                                             input["T_cao_reactor_in"],
-                                             input["T_water_reactor_in"],
+        carbonator_results = self.carbonator(inputs,
                                              self._T_water_reactor_out,
                                              self._T_carb,
                                              results["p_carb"],
                                              self._cao_conversion)
         results.update(carbonator_results)
-        # if m_water_in is less than 0, than skip the following computation and return a bad result
-        if results["m_water_in"]<0:
-            results["hot_utility"]=1e6
-            results["carb_heat_rec_eff"]=-1
-            return results
-
         # flue gas fan
         flue_gas_name = self._pw.get_flue_gas_refprop_name()
         flue_gas_pi = self._p_amb
@@ -88,6 +85,13 @@ class CarbonatorSide(object):
                                                             flue_gas_mass_rate,
                                                             flue_gas_name)
         results.update(flue_gas_fan_results)
+        if results["T_flue_gas_reactor_in"]<results["T_flue_gas_fan_out"]:
+            results["is_succeed"]=0
+
+        if results["is_succeed"]==0:
+            results["hot_utility"]=1e6
+            results["carb_heat_rec_eff"]=-1
+            return results
 
         # Q hot water
         h_To_water = CP.PropsSI('H', 'T', self._T_water_reactor_out+273.15,
@@ -116,11 +120,12 @@ class CarbonatorSide(object):
         ## results["cooling_power"] = self.cooling_power(cold_util)*(-1)
 
         # summary
+        results["is_succeed"]=1
         results["carb_auxiliary_power"] = results["conveying_power"]+ \
             results["flue_gas_fan_power"]
 
         results["carb_heat_rec_eff"] = results["Q_hot_water"]/((results["m_cao_in"] -
-                                                        results["m_cao_unr_out"])*self._delta_h)
+                results["m_cao_unr_out"])*self._delta_h+results["hot_utility"])
 
         return results
 
@@ -137,7 +142,23 @@ class CarbonatorSide(object):
         results["flue_gas_fan_power"] = W*(-1)
         return results
 
-    def carbonator(self, Ti_flue_gas, Ti_cao, Ti_water, To_water, Tcarb, pcarb, X):
+    def carbonator(self,inputs, To_water, Tcarb, pcarb, X):
+        if self._HTCW==1 and self._HRCP==1:
+            Ti_flue_gas=inputs["T_flue_gas_reactor_in"]
+            Ti_cao=inputs["T_cao_reactor_in"]
+            Ti_water=inputs["T_water_reactor_in"]
+        elif self._HTCW==1 and self._HRCP==0:
+            Ti_flue_gas=inputs["T_flue_gas_reactor_in"]
+            Ti_cao=inputs["T_cao_reactor_in"]
+            Ti_water=self._T_amb
+        elif self._HTCW==0 and self._HRCP==1:
+            Ti_flue_gas=inputs["T_flue_gas_reactor_in"]
+            mass_water=inputs["m_water_in"]
+            Ti_water=self._T_water_reactor_out
+        else:
+            raise ValueError("Invalid HTCW or HRCP!")
+
+
         M_cao = 56e-3  # kg/mol
         M_caco3 = 100e-3  # kg/mol
         M_CO2 = 44e-3  # kg/mol
@@ -178,26 +199,38 @@ class CarbonatorSide(object):
         # print(f"total reaction heat released is {Q_heat/1000} kW")
 
         cp_cao_Tr = self._pw.cp0mass("cao", Tcarb)
-        cp_cao_Ti = self._pw.cp0mass("cao", Ti_cao)
-
         h_Tr_flue_gas = CP.PropsSI('H', 'T', Tcarb+273.15, 'P', pcarb, flue_gas_name)
         h_Ti_flue_gas = CP.PropsSI('H', 'T', Ti_flue_gas+273.15, 'P', pcarb, flue_gas_name)  # 等压过程
-
         h_To_water = CP.PropsSI('H', 'T', To_water+273.15, 'P', self._p_water,
                                 "REFPROP::water")  # todo: change water pressure
         h_Ti_water = CP.PropsSI('H', 'T', Ti_water+273.15, 'P', self._p_water, "REFPROP::water")
-        mass_water = (-Q_heat-mass_cao_i*(cp_cao_Tr*Tcarb-cp_cao_Ti*Ti_cao) -
-                      mass_flue_gas*(h_Tr_flue_gas-h_Ti_flue_gas)) /\
-                     (h_To_water-h_Ti_water)
-        # print(f"mass flow rate of water is {mass_water} kg/s ")
-
         results = {}
+        results["is_succeed"]=1
+        if self._HTCW==1:  
+            cp_cao_Ti = self._pw.cp0mass("cao", Ti_cao)
+            mass_water = (-Q_heat-mass_cao_i*(cp_cao_Tr*Tcarb-cp_cao_Ti*Ti_cao) -
+                        mass_flue_gas*(h_Tr_flue_gas-h_Ti_flue_gas)) /\
+                        (h_To_water-h_Ti_water)
+            if results["m_water_in"]<0:
+                results["is_succeed"]=0
+             # print(f"mass flow rate of water is {mass_water} kg/s ")
+        elif self._HRCP==1:
+            Q_cao=-Q_heat-mass_flue_gas*(h_Tr_flue_gas-h_Ti_flue_gas)
+            h_Ti_cao=cp_cao_Tr*Tcarb-Q_cao/mass_cao_i
+            if h_Ti_cao<=0 or h_Ti_cao>cp_cao_Tr*Tcarb:
+                results["is_succeed"]=0
+            Ti_cao=self._calculate_T_cao(cp_cao_Tr, h_Ti_cao)
+            results["T_cao_reactor_in"]=Ti_cao
+        else:
+            raise ValueError("Invalid HTCW or HRCP!")
+
+        
         deconbonized_flue_gas_composition = {}
         deconbonized_flue_gas_composition["co2"] = self._pw._co2_mole_frac_e
         deconbonized_flue_gas_composition["n2"] = self._pw._n2_mole_frac_e
         deconbonized_flue_gas_composition["o2"] = self._pw._o2_mole_frac_e
         results["deconbonized_flue_gas_composition"] = deconbonized_flue_gas_composition
-
+        results["T_water_reactor_in"]=Ti_water
         results["m_flue_gas_in"] = mass_flue_gas
         results["m_water_in"] = mass_water
         results["m_co2_capture"] = mass_co2_r
@@ -206,8 +239,19 @@ class CarbonatorSide(object):
         results["m_cao_unr_out"] = mass_cao_i-mass_cao_r
         results["m_caco3_out"] = mass_caco3_o
         results["Q_carbonation"]=mole_cao_r*delta_H_Tr
-        results["delta_H_Tcarb"]=delta_H_Tr
+        results["delta_H_Tcarb"]=delta_H_Tr 
         return results
+
+    def _calculate_T_cao(self, cp_cao_Tr, h_Ti_cao):
+        Ti_cao_n_1=h_Ti_cao/cp_cao_Tr
+        Ti_cao_n=0
+        eps=1.5
+        while abs(Ti_cao_n_1-Ti_cao_n)>eps:
+            Ti_cao_n=Ti_cao_n_1
+            cp_cao_Ti=self._pw.cp0mass("cao", Ti_cao_n_1)
+            Ti_cao_n_1=h_Ti_cao/cp_cao_Ti
+        Ti_cao=Ti_cao_n_1
+        return Ti_cao
 
     def conveying_power(self, m_cao_i, m_cao_unr, m_caco3_o):
         return self._convey_consumption*self._storage_carbonator_distance * \

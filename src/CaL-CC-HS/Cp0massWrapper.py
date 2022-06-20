@@ -66,8 +66,8 @@ class Cp0mass_Wrapper(object):
     def _read_solid_properties(self):
         data_csv = f"{CaLRepo}/data/cpmass_cao_caco3.csv"
         df = pd.read_csv(data_csv)
-        f_cao = interpolate.interp1d(df["TEMP"], df["CAO"])
-        f_caco3 = interpolate.interp1d(df["TEMP"], df["CACO3"])
+        f_cao = interpolate.interp1d(df["TEMP"], df["CAO"],fill_value="extrapolate")
+        f_caco3 = interpolate.interp1d(df["TEMP"], df["CACO3"],fill_value="extrapolate")
         return f_cao, f_caco3
 
     def _cp0mass_cao(self, T):
