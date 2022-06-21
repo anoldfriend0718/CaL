@@ -34,10 +34,8 @@ class CalcProblem(object):
         self._cao_conversion=parameters["cao_conversion"]
         self._flue_gas_composistion=parameters["flue_gas_composition"]
         self._decarbonized_rate=parameters["decarbonized_rate"]
-
         calc_para=self._compose_calc_parameters()
         self._calcs=CalcinerSide(calc_para)
-
 
     def _compose_calc_parameters(self):
         parameters={}
@@ -84,17 +82,15 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         self._T_water_reactor_out=carbonator_parameters["T_water_reactor_out"]
         self._HTCW=carbonator_parameters["HTCW"]
         self._HRCP=carbonator_parameters["HRCP"]
+        self._obj=carbonator_parameters["obj"]
 
         # initialize plant
         carbonator_parameters=self._compose_carbonator_parameters()
         self._carbonatorSide = CarbonatorSide(carbonator_parameters)
-
         # for plant constraints
         self._hot_util=1e2
-
         # for concurrent worker
         self._max_map_executor=10
-
         M, maxormins, Dim, varTypes, lb, ub, lbin, ubin = self._compose_generic_algorithm_paramters()
         # 调用父类构造方法完成实例化
         ea.Problem.__init__(self, name, M, maxormins, Dim, varTypes, lb, ub, lbin, ubin)
@@ -102,7 +98,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
     def _compose_generic_algorithm_paramters(self):
         ## generic algorithm parameters 
         M = 1  # 优化目标个数
-        maxormins = [-1] * M  # 初始化maxormins（目标最小最大化标记列表，1：最小化该目标；-1：最大化该目标）
+        maxormins = self._get_maxormins(M)  # 初始化maxormins（目标最小最大化标记列表，1：最小化该目标；-1：最大化该目标）
         if self._HTCW==1 and self._HRCP==1:
             Dim = 3  # 初始化Dim（决策变量维数）
             varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
@@ -137,9 +133,19 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
 
         return M,maxormins,Dim,varTypes,lb,ub,lbin,ubin
 
+    def _get_maxormins(self, M):
+        # 初始化maxormins（目标最小最大化标记列表，1：最小化该目标；-1：最大化该目标）
+        if self._obj=="energy":
+            maxormins = [-1] * M
+            return maxormins
+        elif self._obj=="economic":
+            maxormins = [1] * M
+            return maxormins
+        else:
+            raise ValueError("objective is invaid. It should be energy or economic.")
+
     def _compose_carbonator_parameters(self):
         parameters={}
-
         parameters["flue_gas_composition"]=self._flue_gas_composistion
         parameters["isentropic_eff_mc"] = isentropic_eff_fan
         parameters["mechanical_eff"] = mechanical_eff
@@ -152,7 +158,6 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["T_water_reactor_out"]=self._T_water_reactor_out
         parameters["T_carb"]=self._T_carb
         parameters["cao_conversion"]=self._cao_conversion
-
         parameters["carbonator_eff"]=1-carbonator_thermal_loss
         parameters["convey_consumption"]=convey_consumption 
         parameters["storage_carbonator_distance"]=storage_carbonator_distance 
@@ -163,11 +168,9 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["p_water"] = parameters["p_amb"]
         parameters["HTCW"]=self._HTCW
         parameters["HRCP"]=self._HRCP
-
         return parameters
 
     def evalVars(self, Vars):  # 目标函数
-
         # with concurrent.futures.ThreadPoolExecutor(max_workers=self._max_map_executor) as map_executor_pool:
         with concurrent.futures.ProcessPoolExecutor(max_workers=self._max_map_executor) as map_executor_pool:
             futures=[]
@@ -193,34 +196,42 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
                 futures.append(future)
             # reduce
             for _, future in enumerate(futures):
-                result=future.result()
+                results=future.result()
                 if self._HTCW==1:
                     # objective function
-                    obj=result["carb_heat_rec_eff"]
+                    obj=self._get_obj(results)
                     objs.append(obj)
                     #constrainst
-                    c0=1-result["is_succeed"]
-                    c1=result["hot_utility"]-self._hot_util #
-                    c2=-result["m_water_in"]
+                    c0=1-results["is_succeed"]
+                    c1=results["hot_utility"]-self._hot_util #
+                    c2=-results["m_water_in"]
                     constraints.append([c0,c1,c2])
                 elif self._HRCP==1:
                     # objective function
-                    obj=result["carb_heat_rec_eff"]
+                    obj=self._get_obj(results)
                     objs.append(obj)
                     #constrainst
-                    c0=1-result["is_succeed"]
-                    c1=result["hot_utility"]-self._hot_util #
-                    c2=result["T_cao_reactor_in"]-(self._T_carb-delta_T_pinch)
+                    c0=1-results["is_succeed"]
+                    c1=results["hot_utility"]-self._hot_util #
+                    c2=results["T_cao_reactor_in"]-(self._T_carb-delta_T_pinch)
                     # c3=T_amb+delta_T_pinch-result["T_cao_reactor_in"]
-                    
                     constraints.append([c0,c1,c2])
-
                 else:
                     raise ValueError("Invalid HTCW or HRCP!")
-
         f=np.reshape(objs,(-1,1)) # 计算目标函数值矩阵
         CV=np.array(constraints) # 构建违反约束程度矩阵
         return f, CV
+
+    def _get_obj(self,results):
+        if self._obj=="energy":
+            return results["carb_heat_rec_eff"]
+        elif self._obj=="economic":
+            if "invCosts" in results.keys() and "total" in results["invCosts"].keys():
+                return results["invCosts"]["total"]
+            inf=1e6
+            return inf
+        else:
+            raise ValueError("objective is invaid. It should be energy or economic.")
 
     def solve(self,inputs):
         results=self._carbonatorSide.solve(inputs)

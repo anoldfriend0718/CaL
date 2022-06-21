@@ -10,11 +10,15 @@ import numpy as np
 import CoolProp.CoolProp as CP
 from Cp0massWrapper import Cp0mass_Wrapper
 from pyPinchPointAnalyzer import Pinch_point_analyzer
+from pyCostEstimator import Cost_Estimator
+
 
 
 class CarbonatorSide(object):
     def __init__(self, parameters) -> None:
         self._pw = Cp0mass_Wrapper(parameters["flue_gas_composition"], parameters["decarbonized_rate"])
+        self._cost_estimator=Cost_Estimator()
+
         self._flue_gas_composition = self._pw._norm_flue_gas_composition_s
         self._decarbonized_rate = parameters["decarbonized_rate"]
         self._isentropic_eff_mc = parameters["isentropic_eff_mc"]
@@ -43,6 +47,7 @@ class CarbonatorSide(object):
         self._delta_h = 3178.6*1000  # J/kg CaO
         self._HTCW=parameters["HTCW"]
         self._HRCP=parameters["HRCP"]
+
 
 
     def solve(self, inputs):
@@ -119,13 +124,18 @@ class CarbonatorSide(object):
         ## cooling power
         ## results["cooling_power"] = self.cooling_power(cold_util)*(-1)
 
-        # summary
+        # energy metrics summary
         results["is_succeed"]=1
         results["carb_auxiliary_power"] = results["conveying_power"]+ \
             results["flue_gas_fan_power"]
-
         results["carb_heat_rec_eff"] = results["Q_hot_water"]/((results["m_cao_in"] -
                 results["m_cao_unr_out"])*self._delta_h+results["hot_utility"])
+
+        # calculate investment costs
+        invCosts={}
+        invCosts.update(self._cost_estimator.calculate_carbonator_invCosts(results))
+        invCosts["total"]=np.sum(list(invCosts.values()))
+        results["invCosts"]=invCosts
 
         return results
 

@@ -170,6 +170,8 @@ if __name__=="__main__":
         parameters["T_water_reactor_out"]=80
         parameters["HTCW"]=0
         parameters["HRCP"]=1
+        # parameters["obj"]="energy" 
+        parameters["obj"]="economic"  
 
         ca=CaLAnalyser(parameters)
         results={}
