@@ -33,7 +33,11 @@ class CarbonatorSide(object):
 
         self._cao_conversion = parameters["cao_conversion"]
         self._T_water_reactor_out = parameters["T_water_reactor_out"]
-        self._p_water = parameters["p_water"]  # todo: change the water pressure
+        self._p_water_in = parameters["p_water"]  
+        self._water_pressure_drop_rate=parameters["water_pressure_drop_rate"]
+        self._water_pipe_length=parameters["water_pipe_length"]
+        self._pump_hydraulic_eff=parameters["water_pump_hydraulic_efficiency"]
+        self._pump_mechanical_eff=parameters["water_pump_mechanical_efficiency"]
 
         self._carbonator_eff = parameters["carbonator_eff"]
         self._convey_consumption = parameters["convey_consumption"]
@@ -66,7 +70,7 @@ class CarbonatorSide(object):
         results["p_carb_o"] = self._p_amb/(1-self._decarbon_flue_gas_pressure_loss_ratio)  # 压力略高于大气压，需扣减压力损失
         results["p_carb_i"]=self._carbonator_pressure_loss+results["p_carb_o"] 
         results["p_carb"]=(results["p_carb_o"]+results["p_carb_i"])/2
-        results["p_water"] = self._p_water
+        results["p_water"] = self._p_water_in
         results["cao_conversion"] = self._cao_conversion
         results["HTCW"]=self._HTCW
         results["HRCP"]=self._HRCP
@@ -98,11 +102,14 @@ class CarbonatorSide(object):
             results["carb_heat_rec_eff"]=-1
             return results
 
-        # Q hot water
+        # hot water
+        p_water_after_pump=self._p_water_in+self._water_pipe_length*self._water_pressure_drop_rate
+        results["water_pump_power"]=self._water_pump_power(self._p_water_in,
+            p_water_after_pump,results["m_water_in"])
         h_To_water = CP.PropsSI('H', 'T', self._T_water_reactor_out+273.15,
-                                'P', self._p_water, "REFPROP::water")
+                                'P', p_water_after_pump, "REFPROP::water")
         h_Ti_water = CP.PropsSI('H', 'T', self._T_amb+273.15,
-                                'P', self._p_water, "REFPROP::water")
+                                'P', p_water_after_pump, "REFPROP::water")
         Q_hot_water = results["m_water_in"]*(h_To_water-h_Ti_water)
         results["Q_hot_water"] = Q_hot_water
         # conveying power
@@ -127,7 +134,7 @@ class CarbonatorSide(object):
         # energy metrics summary
         results["is_succeed"]=1
         results["carb_auxiliary_power"] = results["conveying_power"]+ \
-            results["flue_gas_fan_power"]
+            results["flue_gas_fan_power"]+results["water_pump_power"]
         results["carb_heat_rec_eff"] = results["Q_hot_water"]/((results["m_cao_in"] -
                 results["m_cao_unr_out"])*self._delta_h+results["hot_utility"])
 
@@ -140,6 +147,13 @@ class CarbonatorSide(object):
 
         return results
 
+    def _water_pump_power(self,pi,po,mass_rate):
+        rho_water=1000
+        vol_rate=mass_rate/rho_water
+        dp=po-pi
+        power=vol_rate*dp/self._pump_hydraulic_eff/self._pump_mechanical_eff*(-1)
+        return power
+    
     def flue_gas_fan_power(self, Ti, pi, po, mass_rate, fluid):
         hi = CP.PropsSI('H', 'T', Ti+273.15, 'P', pi, fluid)
         si = CP.PropsSI('S', 'T', Ti+273.15, 'P', pi, fluid)
@@ -212,9 +226,9 @@ class CarbonatorSide(object):
         cp_cao_Tr = self._pw.cp0mass("cao", Tcarb)
         h_Tr_flue_gas = CP.PropsSI('H', 'T', Tcarb+273.15, 'P', pcarb, flue_gas_name)
         h_Ti_flue_gas = CP.PropsSI('H', 'T', Ti_flue_gas+273.15, 'P', pcarb, flue_gas_name)  # 等压过程
-        h_To_water = CP.PropsSI('H', 'T', To_water+273.15, 'P', self._p_water,
+        h_To_water = CP.PropsSI('H', 'T', To_water+273.15, 'P', self._p_water_in,
                                 "REFPROP::water")  # todo: change water pressure
-        h_Ti_water = CP.PropsSI('H', 'T', Ti_water+273.15, 'P', self._p_water, "REFPROP::water")
+        h_Ti_water = CP.PropsSI('H', 'T', Ti_water+273.15, 'P', self._p_water_in, "REFPROP::water")
         results = {}
         results["is_succeed"]=1
         if self._HTCW==1:  

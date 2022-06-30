@@ -27,6 +27,13 @@ n_compression=6    #https://doi.org/10.1016/j.apenergy.2016.04.053
 HTC_SSHX=200 ## TODO: too big ,150?
 HTC_SGHX=300 #https://doi.org/10.1016/j.ecmx.2020.100039 ## TODO: too big ,150?
 
+## feedwater 
+water_pres_drop_rate=100 #Pa/m
+hot_water_pipe_length=1000 #m
+water_pump_hydraulic_efficiency=0.75
+water_pump_mechanical_efficiency=0.94
+
+
 class CalcProblem(object):
     def __init__(self,parameters) -> None:
         ## plant variables
@@ -166,6 +173,10 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["T_amb"]=T_amb 
         parameters["p_amb"] = p_amb
         parameters["p_water"] = parameters["p_amb"]
+        parameters["water_pressure_drop_rate"]=water_pres_drop_rate
+        parameters["water_pipe_length"]=hot_water_pipe_length
+        parameters["water_pump_hydraulic_efficiency"]=water_pump_hydraulic_efficiency
+        parameters["water_pump_mechanical_efficiency"]=water_pump_mechanical_efficiency
         parameters["HTCW"]=self._HTCW
         parameters["HRCP"]=self._HRCP
         return parameters
