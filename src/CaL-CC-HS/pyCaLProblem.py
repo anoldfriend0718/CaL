@@ -24,8 +24,8 @@ deltaTmin_SSHX=20  #https://doi.org/10.1016/j.apenergy.2016.04.053
 deltaTmin_SGHX=15  #https://doi.org/10.1016/j.apenergy.2016.04.053
 T_cooling_co2=20   #https://doi.org/10.1016/j.apenergy.2016.04.053
 n_compression=6    #https://doi.org/10.1016/j.apenergy.2016.04.053
-HTC_SSHX=200
-HTC_SGHX=300 #https://doi.org/10.1016/j.ecmx.2020.100039
+HTC_SSHX=200 ## TODO: too big ,150?
+HTC_SGHX=300 #https://doi.org/10.1016/j.ecmx.2020.100039 ## TODO: too big ,150?
 
 class CalcProblem(object):
     def __init__(self,parameters) -> None:
@@ -226,8 +226,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         if self._obj=="energy":
             return results["carb_heat_rec_eff"]
         elif self._obj=="economic":
-            if "invCosts" in results.keys() and "total" in results["invCosts"].keys():
-                return results["invCosts"]["total"]
+            if "invCosts" in results.keys() and "specific" in results["invCosts"].keys():
+                return results["invCosts"]["specific"]
             inf=1e6
             return inf
         else:

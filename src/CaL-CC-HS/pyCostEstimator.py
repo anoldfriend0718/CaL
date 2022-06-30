@@ -82,7 +82,7 @@ class Cost_Estimator(object):
         return HC
 
     def _cost_CO2_compression_train(self,Pt):
-        #reference:https://doi.org/10.1016/j.ecmx.2020.100038
+        #reference:https://doi.org/10.1016/j.ecmx.2020.100039
         #the referred year: 2018
         #the given Money unit: USD
         #Pt unit: W
