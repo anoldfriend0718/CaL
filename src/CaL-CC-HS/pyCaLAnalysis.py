@@ -118,7 +118,7 @@ class CaLAnalyser(object):
         total_sep_power=mole_co2_in*deconbonized_rate*specific_sep_power
         analysis_results["total_sep_power"]=total_sep_power
         T_amb=plant_results["carb"]["T_amb"]+273.15
-        T_hot_water=plant_results["carb"]["T_water_reactor_out"]+273.15
+        T_hot_water=plant_results["carb"]["T_water_prod_out"]+273.15
         sep_eff1=total_sep_power/(total_power-analysis_results["Q_hot_water"]*(1-T_amb/T_hot_water))
         #not include the compression power for co2 storage
         sep_eff2=total_sep_power/(total_power+plant_results["calc"]["CO2_compression_train"]["compressor_power"]
@@ -167,7 +167,8 @@ if __name__=="__main__":
         parameters["T_carb"]=650
         parameters["T_calc"]=900
         parameters["cao_conversion"]=0.5
-        parameters["T_water_reactor_out"]=80
+        parameters["T_water_supply_in"]=60
+        parameters["T_water_prod_out"]=85
         parameters["HTCW"]=0
         parameters["HRCP"]=1
         # parameters["obj"]="energy" 

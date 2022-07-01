@@ -86,7 +86,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         self._vol_rate_flue_gas=carbonator_parameters["vol_rate_flue_gas"]
         self._decarbonized_rate=carbonator_parameters["decarbonized_rate"]
         self._T_flue_gas=carbonator_parameters["T_flue_gas"]
-        self._T_water_reactor_out=carbonator_parameters["T_water_reactor_out"]
+        self._T_water_supply_in=carbonator_parameters["T_water_supply_in"]
+        self._T_water_prod_out=carbonator_parameters["T_water_prod_out"]
         self._HTCW=carbonator_parameters["HTCW"]
         self._HRCP=carbonator_parameters["HRCP"]
         self._obj=carbonator_parameters["obj"]
@@ -95,7 +96,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         carbonator_parameters=self._compose_carbonator_parameters()
         self._carbonatorSide = CarbonatorSide(carbonator_parameters)
         # for plant constraints
-        self._hot_util=1e2
+        self._hot_util=10
         # for concurrent worker
         self._max_map_executor=10
         M, maxormins, Dim, varTypes, lb, ub, lbin, ubin = self._compose_generic_algorithm_paramters()
@@ -111,10 +112,10 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
             varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
             lb = [T_amb+delta_T_pinch, #T_cao,in
                 T_amb+delta_T_pinch, #T_flue_gas,in
-                T_amb]  # T_cold water  决策变量下界
+                self._T_water_supply_in]  # T_cold water  决策变量下界
             ub = [self._T_carb-delta_T_pinch, #T_cao,in
                 self._T_carb-delta_T_pinch, #T_flue_gas,in
-                self._T_water_reactor_out]  #  T_hot water 决策变量上界
+                self._T_water_prod_out]  #  T_hot water 决策变量上界
             lbin = [1,0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         elif self._HTCW==1 and self._HRCP==0:
@@ -132,7 +133,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
             lb = [T_amb+delta_T_pinch, #T_flue_gas,in
                 0]  # m_water,in
             ub = [self._T_carb-delta_T_pinch, #T_flue_gas,in
-                10] # m_water,in
+                20] # m_water,in
             lbin = [0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         else:
@@ -162,7 +163,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["decarbonized_rate"]=self._decarbonized_rate
         parameters["vol_rate_flue_gas"]=self._vol_rate_flue_gas
         parameters["T_flue_gas"]=self._T_flue_gas
-        parameters["T_water_reactor_out"]=self._T_water_reactor_out
+        parameters["T_water_supply_in"]=self._T_water_supply_in
+        parameters["T_water_prod_out"]=self._T_water_prod_out
         parameters["T_carb"]=self._T_carb
         parameters["cao_conversion"]=self._cao_conversion
         parameters["carbonator_eff"]=1-carbonator_thermal_loss
@@ -172,7 +174,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["delta_T_pinch"]=delta_T_pinch 
         parameters["T_amb"]=T_amb 
         parameters["p_amb"] = p_amb
-        parameters["p_water"] = parameters["p_amb"]
+        parameters["p_water_supply_in"] = parameters["p_amb"]
         parameters["water_pressure_drop_rate"]=water_pres_drop_rate
         parameters["water_pipe_length"]=hot_water_pipe_length
         parameters["water_pump_hydraulic_efficiency"]=water_pump_hydraulic_efficiency

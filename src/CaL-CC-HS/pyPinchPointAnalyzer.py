@@ -30,6 +30,7 @@ class Pinch_point_analyzer(object):
         self._p_flue_gas_fan_out = inputs["p_flue_gas_fan_out"]
         self._T_flue_gas_reactor_in = inputs["T_flue_gas_reactor_in"]
         self._T_cao_reactor_in = inputs["T_cao_reactor_in"]
+        self._T_water_supply_in= inputs["T_water_supply_in"]
         self._T_water_reactor_in = inputs["T_water_reactor_in"]
         self._T_decarbonized_flue_gas_out = inputs["T_decarbonized_flue_gas_out"]
         self._p_decarbonized_flue_gas_out = self._p_amb
@@ -37,7 +38,7 @@ class Pinch_point_analyzer(object):
 
         self._p_carb_o = inputs["p_carb_o"]
         self._p_carb_i = inputs["p_carb_i"]
-        self._p_water = inputs["p_water"]
+        self._p_water = inputs["p_water_after_pump"]
         self._HTCW=inputs["HTCW"]
         self._HRCP=inputs["HRCP"]
 
@@ -101,16 +102,16 @@ class Pinch_point_analyzer(object):
 
         ## C3: water
         if self._HRCP==1:
-            pinch_point_data["TSUPPLY"]["C_water"] = self._T_amb
+            pinch_point_data["TSUPPLY"]["C_water"] = self._T_water_supply_in
             pinch_point_data["TTARGET"]["C_water"] = self._T_water_reactor_in
             pinch_point_data["FLOWRATE"]["C_water"] = self._m_water_in
             pinch_point_data["ENERGY"]["C_water"] = self._m_water_in * \
                 (CP.PropsSI('H', 'T', self._T_water_reactor_in+273.15,
                             'P', self._p_water, "REFPROP::water") -
-                CP.PropsSI('H', 'T', self._T_amb+273.15,
+                CP.PropsSI('H', 'T', self._T_water_supply_in+273.15,
                             'P', self._p_water, "REFPROP::water"))
             pinch_point_data["CP"]["C_water"] = pinch_point_data["ENERGY"]["C_water"] / \
-                (self._T_water_reactor_in-self._T_amb)
+                (self._T_water_reactor_in-self._T_water_supply_in)
 
         self._pinch_point_data = pinch_point_data
 
