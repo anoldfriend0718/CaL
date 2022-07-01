@@ -7,8 +7,9 @@ sys.path.append(f"{CaLRepo}/utilities/")
 
 
 import math
+import copy
 import pandas as pd
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize_scalar,brentq
 import geatpy as ea
 import CoolProp.CoolProp as CP
 
@@ -18,16 +19,48 @@ from pyCostEstimator import Cost_Estimator
 
 
 class CaLAnalyser(object):
-    def __init__(self,parameters):
-        self._parameters=parameters
-        self._calc=CalcProblem(parameters)
-        self._carb=CarbProblem(parameters)
-        self._cost_estimator=Cost_Estimator()
+    def __init__(self):
+        self._tmp_carb_results={}
+     
+    def solve(self,parameters):
+        # carbonator side
+        flue_gas_rate_s=0.1
+        flue_gas_rate_e=10 #TODO: hardcode, depending on the user hot load
+        target_heat_load=parameters["user_heat_load"]
+        # xtol=0.0001 #m3/s
+        rtol=0.1/100 #0.1%    
+        maxiter=20
+        vol_flue_gas_rate=brentq(self._solve_carb_side,flue_gas_rate_s,flue_gas_rate_e,
+            args=(target_heat_load,parameters),rtol=rtol,maxiter=maxiter)
+        print(f"calculated flue gas volumetric rate: {vol_flue_gas_rate}")
+        carb_results=self._tmp_carb_results
 
-    def solve(self):
+        #calciner side 
+        calc_side=CalcProblem(parameters)
+        mass_camix_calc=carb_results["m_cao_unr_out"]+carb_results["m_caco3_out"]
+        calc_opt_results=minimize_scalar(calc_side.opt,args=(mass_camix_calc,),
+            method='bounded',bounds=(0, 1),tol=1e-5)
+        calc_mfrac=calc_opt_results.x
+        calc_inputs={}
+        calc_inputs["mass_camix_in"]=mass_camix_calc
+        calc_inputs["mfrac"]=calc_mfrac
+        calc_results=calc_side.solve(calc_inputs)
+
+        #compose plant results
+        plant_results={}
+        plant_results["carb"]=carb_results
+        plant_results["calc"]=calc_results
+        return plant_results
+
+    def _solve_carb_side(self,vol_rate_flue_gas,target_heat_load,other_parameters):
         # carbonator side 
+        print(f"solving carb side with flue gas volumetric rate: {vol_rate_flue_gas}")
+        carb_parameters = copy.deepcopy(other_parameters)
+        carb_parameters["vol_rate_flue_gas"]=vol_rate_flue_gas
+        carb_prb=CarbProblem(carb_parameters)
+        
         #optimize the carbonator side according to the energy efficiency
-        algorithm = ea.soea_DE_currentToBest_1_bin_templet(self._carb,
+        algorithm = ea.soea_DE_currentToBest_1_bin_templet(carb_prb,
                                                 ea.Population(Encoding='RI', NIND=30), #它的取值范围一般在[5D，10D]之间（D为每个个体的维度）。
                                                 MAXGEN=200,  # 最大进化代数。
                                                 logTras=1, #,  # 表示每隔多少代记录一次日志信息，0表示不记录。
@@ -47,34 +80,25 @@ class CaLAnalyser(object):
         best_vars=res["Vars"]
         # solve the carbonator results with the best choice   
         
-        carb_opt_results=self._compose_carb_opt_results(best_vars)
-        carb_results=self._carb.solve(carb_opt_results)
-        plant_results={}
-        plant_results["carb"]=carb_results
+        carb_opt_results=self._compose_carb_opt_results(best_vars,carb_parameters)
+        carb_results=carb_prb.solve(carb_opt_results)
+        self._tmp_carb_results=carb_results
+  
+        Q_hot_water=carb_results["Q_hot_water"]
+        error=Q_hot_water-target_heat_load
+        print(f"the calculated user heat load: {Q_hot_water}, the error: {error}")
+        return error
 
-        #calciner side 
-        mass_camix_calc=carb_results["m_cao_unr_out"]+carb_results["m_caco3_out"]
-        calc_opt_results=minimize_scalar(self._calc.opt,args=(mass_camix_calc,),
-            method='bounded',bounds=(0, 1),tol=1e-5)
-        calc_mfrac=calc_opt_results.x
-        calc_inputs={}
-        calc_inputs["mass_camix_in"]=mass_camix_calc
-        calc_inputs["mfrac"]=calc_mfrac
-        calc_results=self._calc.solve(calc_inputs)
-        plant_results["calc"]=calc_results
-
-        return plant_results
-
-    def _compose_carb_opt_results(self,best_vars):
+    def _compose_carb_opt_results(self,best_vars,carb_parameters):
         carb_opt_results={}
-        if self._parameters["HTCW"]==1 and self._parameters["HRCP"]==1:
+        if carb_parameters["HTCW"]==1 and carb_parameters["HRCP"]==1:
             carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
             carb_opt_results["T_cao_reactor_in"]=best_vars[0,1]
             carb_opt_results["T_water_reactor_in"]=best_vars[0,2]
-        elif self._parameters["HTCW"]==1 and self._parameters["HRCP"]==0:
+        elif carb_parameters["HTCW"]==1 and carb_parameters["HRCP"]==0:
             carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
             carb_opt_results["T_cao_reactor_in"]=best_vars[0,1]
-        elif self._parameters["HTCW"]==0 and self._parameters["HRCP"]==1:
+        elif carb_parameters["HTCW"]==0 and carb_parameters["HRCP"]==1:
             carb_opt_results["T_flue_gas_reactor_in"]=best_vars[0,0]
             carb_opt_results["m_water_in"]=best_vars[0,1]
         else:
@@ -89,7 +113,8 @@ class CaLAnalyser(object):
         return results
 
     def analyze_economic_metrics(self,plant_results):
-        invCosts=self._cost_estimator.solve(plant_results)
+        cost_estimator=Cost_Estimator()
+        invCosts=cost_estimator.solve(plant_results)
         return invCosts
     
     def analyze_energy_metrics(self,plant_results):
@@ -126,7 +151,6 @@ class CaLAnalyser(object):
         analysis_results["sep_eff1"]=sep_eff1
         analysis_results["sep_eff2"]=sep_eff2
         
-        
         return analysis_results
 
     # J/mol (CO2)
@@ -161,7 +185,8 @@ if __name__=="__main__":
         flue_gas_composition["n2"]=0.6975 
         parameters={}
         parameters["flue_gas_composition"]=flue_gas_composition
-        parameters["vol_rate_flue_gas"]=6000/3600
+        # parameters["vol_rate_flue_gas"]=6000/3600
+        parameters["user_heat_load"]=4e6 #4MW
         parameters["decarbonized_rate"]=0.9
         parameters["T_flue_gas"]=40
         parameters["T_carb"]=650
@@ -174,9 +199,9 @@ if __name__=="__main__":
         # parameters["obj"]="energy" 
         parameters["obj"]="economic"  
 
-        ca=CaLAnalyser(parameters)
+        ca=CaLAnalyser()
         results={}
-        plant_results=ca.solve()
+        plant_results=ca.solve(parameters)
         results["plant"]=plant_results
         analysis_results=ca.analyze(plant_results)
         results["metrics"]=analysis_results
