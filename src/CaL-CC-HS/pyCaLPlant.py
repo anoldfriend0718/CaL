@@ -144,7 +144,7 @@ class CarbonatorSide(object):
 
         # calculate investment costs
         invCosts={}
-        invCosts.update(self._cost_estimator.calculate_carbonator_invCosts(results))
+        invCosts.update(self._cost_estimator.calculate_carbonator_costs(results))
         invCosts["total"]=np.sum(list(invCosts.values()))
         invCosts["specific"]=invCosts["total"]/results["m_water_in"]
         results["invCosts"]=invCosts

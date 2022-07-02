@@ -133,7 +133,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
             lb = [T_amb+delta_T_pinch, #T_flue_gas,in
                 0]  # m_water,in
             ub = [self._T_carb-delta_T_pinch, #T_flue_gas,in
-                100] # m_water,in ,depending on user hot load. Larger hot load, bigger this value#TODO: remove hard code
+                200] # m_water,in ,depending on user hot load. Larger hot load, bigger this value#TODO: remove hard code
             lbin = [0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         else:

@@ -15,7 +15,7 @@ import CoolProp.CoolProp as CP
 
 from pyCaLProblem import CarbProblem,CalcProblem
 from pyCostEstimator import Cost_Estimator
-
+from pyEconomicComparer import economic_comparer
 
 
 class CaLAnalyser(object):
@@ -25,7 +25,7 @@ class CaLAnalyser(object):
     def solve(self,parameters):
         # carbonator side
         flue_gas_rate_s=0.1
-        flue_gas_rate_e=10 #TODO: hardcode, depending on the user hot load
+        flue_gas_rate_e=20 #TODO: hardcode, depending on the user hot load
         target_heat_load=parameters["user_heat_load"]
         # xtol=0.0001 #m3/s
         rtol=0.1/100 #0.1%    
@@ -106,15 +106,16 @@ class CaLAnalyser(object):
 
         return carb_opt_results
     
-    def analyze(self,plant_results):
+    def analyze(self,plant_results,economic_inputs):
         results={}
-        results["economic"]=self.analyze_economic_metrics(plant_results)
         results["energy"]=self.analyze_energy_metrics(plant_results)
+        results["economic"]=self.analyze_economic_metrics(plant_results,results["energy"],economic_inputs)
+        
         return results
 
-    def analyze_economic_metrics(self,plant_results):
+    def analyze_economic_metrics(self,plant_results,energy_analysis_results,economic_inputs):
         cost_estimator=Cost_Estimator()
-        invCosts=cost_estimator.solve(plant_results)
+        invCosts=cost_estimator.solve(plant_results,energy_analysis_results,economic_inputs)
         return invCosts
     
     def analyze_energy_metrics(self,plant_results):
@@ -183,26 +184,37 @@ if __name__=="__main__":
         flue_gas_composition["co2"]=0.1338
         flue_gas_composition["o2"]=0.0384
         flue_gas_composition["n2"]=0.6975 
-        parameters={}
-        parameters["flue_gas_composition"]=flue_gas_composition
+        design_inputs={}
+        design_inputs["flue_gas_composition"]=flue_gas_composition
         # parameters["vol_rate_flue_gas"]=6000/3600
-        parameters["user_heat_load"]=4e6 #4MW
-        parameters["decarbonized_rate"]=0.9
-        parameters["T_flue_gas"]=40
-        parameters["T_carb"]=650
-        parameters["T_calc"]=900
-        parameters["cao_conversion"]=0.5
-        parameters["T_water_supply_in"]=60
-        parameters["T_water_prod_out"]=85
-        parameters["HTCW"]=0
-        parameters["HRCP"]=1
-        # parameters["obj"]="energy" 
-        parameters["obj"]="economic"  
+        design_inputs["user_heat_load"]=15.5e6 #15.5MW
+        design_inputs["decarbonized_rate"]=0.9
+        design_inputs["T_flue_gas"]=40
+        design_inputs["T_carb"]=650
+        design_inputs["T_calc"]=900
+        design_inputs["cao_conversion"]=0.5
+        design_inputs["T_water_supply_in"]=60
+        design_inputs["T_water_prod_out"]=85
+        design_inputs["HTCW"]=0
+        design_inputs["HRCP"]=1
+        # design_inputs["obj"]="energy" 
+        design_inputs["obj"]="economic"  
+
+        economic_inputs={}
+        economic_inputs["elec_price"]=0.165 #元/千瓦时
+        economic_inputs["operation_hours"]=3435 # hours
+        economic_inputs["discount_ratio"]=6/100 #8%
+        economic_inputs["operational_years"]=30
+        economic_inputs["operation_labour_cost_indictor"]=0.025
+        economic_inputs["maintain_labour_cost_indictor"]=0.025
 
         ca=CaLAnalyser()
         results={}
-        plant_results=ca.solve(parameters)
+        plant_results=ca.solve(design_inputs)
         results["plant"]=plant_results
-        analysis_results=ca.analyze(plant_results)
+        analysis_results=ca.analyze(plant_results,economic_inputs)
         results["metrics"]=analysis_results
+        comparor=economic_comparer(economic_inputs)
+        results["comparison"]=comparor.compare(results)
+
         print(results)

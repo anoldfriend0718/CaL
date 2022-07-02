@@ -2,6 +2,13 @@
 import math
 import numpy as np
 
+## construct cost indictor
+construct_labour_cost_indictor=0.5
+engineering_project_cost_indictor=0.35
+TASC_multiplier=1.13
+piping_integration_cost_indictor=0.05
+
+
 class Cost_Estimator(object):
     def __init__(self) -> None:
         self._Eur2Dollars={2014:39.9116/30.3287,2018:35.3758/30.1162}
@@ -9,15 +16,41 @@ class Cost_Estimator(object):
         self._CEPCIs={2001:394.3, 2014:576.1,2018:603.1,2020:596.2}
         self._target_year=2020
         
+    def solve(self,design,energy_analysis_results,economic_inputs):
+        ## construct costs
+        construct_costs={}
+        equipment_costs=self.calculate_equipment_costs(design)
+        construct_costs["equipment"]=equipment_costs
+        construct_costs["installation"]=piping_integration_cost_indictor*equipment_costs["total"]
+        construct_costs["labour"]=construct_labour_cost_indictor*(equipment_costs["total"]+construct_costs["installation"])
+        construct_costs["engineering&project"]=engineering_project_cost_indictor*(equipment_costs["total"]+construct_costs["installation"])
+        construct_costs["total as-spent"]=TASC_multiplier*(equipment_costs["total"]+construct_costs["installation"]+
+            construct_costs["labour"]+construct_costs["engineering&project"])
 
-    def solve(self,design):
-        invCosts={}
-        invCosts.update(self.calculate_calciner_invCosts(design["calc"]))
-        invCosts.update(self.calculate_carbonator_invCosts(design["carb"]))
-        invCosts["total"]=np.sum(list(invCosts.values()))
-        return invCosts
+        ## operational costs
+        operation_costs={}
+        operation_costs["labour"]=economic_inputs["operation_labour_cost_indictor"]*construct_costs["total as-spent"]
+        operation_costs["maintain"]=economic_inputs["maintain_labour_cost_indictor"]*construct_costs["total as-spent"]
+        operation_costs["electricity"]=economic_inputs["elec_price"]*(energy_analysis_results["total_power"])/1000* \
+            economic_inputs["operation_hours"]/1e6
+        operation_costs["total as-spent"]=operation_costs["labour"]+operation_costs["maintain"]+\
+            operation_costs["electricity"]
+  
+        ## compose results
+        investment_costs={}
+        investment_costs["construction"]=construct_costs
+        investment_costs["operation"]=operation_costs
+    
+        return investment_costs
 
-    def calculate_carbonator_invCosts(self,carb_design):
+    def calculate_equipment_costs(self,design):
+        equipment_costs={}
+        equipment_costs.update(self.calculate_calciner_costs(design["calc"]))
+        equipment_costs.update(self.calculate_carbonator_costs(design["carb"]))
+        equipment_costs["total"]=np.sum(list(equipment_costs.values()))
+        return equipment_costs
+
+    def calculate_carbonator_costs(self,carb_design):
         invCosts={}
         # # carbonator
         # # if the reaction heat is recovered at the carbonator wall
@@ -44,7 +77,7 @@ class Cost_Estimator(object):
         return invCosts
 
 
-    def calculate_calciner_invCosts(self,calc_design):
+    def calculate_calciner_costs(self,calc_design):
         invCosts={}
         # Calciner
         Qcalc=calc_design["We_calc"]
