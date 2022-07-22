@@ -1,0 +1,8 @@
+wheel
+CoolProp
+numpy
+pandas
+scipy
+geatpy
+matplotlib==3.3.3
+six

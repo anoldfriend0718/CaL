@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # File              : PyPinch.py
-# License           : License: GNU v3.0
-# Author            : Andrei Leonard Nicusan <aln705@student.bham.ac.uk>
-# Date              : 25.05.2019
+
 
 
 from ast import Raise
