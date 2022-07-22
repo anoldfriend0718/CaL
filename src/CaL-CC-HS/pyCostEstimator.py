@@ -55,12 +55,12 @@ class Cost_Estimator(object):
         # # carbonator
         # # if the reaction heat is recovered at the carbonator wall
         if carb_design["HTCW"]==1:
-            Qcarb=-carb_design["carb"]["Q_carbonation"]
+            Qcarb=-carb_design["Q_carbonation"]
             invCosts["Ccarb"]=self._cost_fluidized_bed_carbonator(Qcarb)
         else:
-            rho_CaO=3297.63  # data from Aspen
-            V_CaO=carb_design["m_cao_in"]/rho_CaO
-            invCosts["Ccarb"]=self._cost_entrained_flow_carbonator(V_CaO)
+            print
+            v_flue_gas=carb_design["vol_rate_flue_gas"]
+            invCosts["Ccarb"]=self._cost_entrained_flow_carbonator(v_flue_gas)
         
         # Flue gas fan 
         PFF=-carb_design["flue_gas_fan_power"]
@@ -81,7 +81,7 @@ class Cost_Estimator(object):
         invCosts={}
         # Calciner
         Qcalc=calc_design["We_calc"]
-        invCosts["Ccalc"]=self._cost_external_heated_calciner(Qcalc)
+        invCosts["Ccalc"]=self._cost_rotary_kiln_calciner(Qcalc)
         # CO2 compression train
         PCCT=-calc_design["CO2_compression_train"]["compressor_power"]
         invCosts["CCO2ct"]=self._cost_CO2_compression_train(PCCT)
@@ -95,32 +95,42 @@ class Cost_Estimator(object):
         return invCosts
     
     def _cost_entrained_flow_carbonator(self,Vi):
-        #reference: https://doi.org/10.1016/j.ijggc.2019.01.005
+        #reference: https://doi.org/10.1016/j.ijggc.2019.01.005, https://doi.org/10.1016/j.rser.2019.109252
         #the referred Year: 2014
         #the given Money unit: EUR 
         #Vi unit: m3/s
         year=2014
-        EU_Dollars=85.9*math.pow(Vi,0.5)*self._Eur2Dollars[year] #unit Dollars
+        EU_Dollars=85.9*1e-3*math.pow(Vi,0.5)*self._Eur2Dollars[year] #unit Dollars
         EU=self._convert_to_RMB_in_target_year(EU_Dollars,year)
         return EU
 
     def _cost_fluidized_bed_carbonator(self,Qc):
-        #reference:https://doi.org/10.1016/j.jclepro.2019.02.049
-        #the referred year: 2018
+        #reference:https://doi.org/10.1016/j.ijggc.2019.01.005
+        #the referred year: 2014
         #the given Money unit: EUR
         #Qc unit: W
-        year=2018
-        FC_Dollars=16591*math.pow(Qc/1000,0.67)*self._Eur2Dollars[year]/1e6  #unit M$
+        year=2014
+        FC_Dollars=(0.217*math.pow(Qc/1e6,0.65)+3.83)*self._Eur2Dollars[year]  #unit M$
         FC=self._convert_to_RMB_in_target_year(FC_Dollars,year)
         return FC
     
-    def _cost_external_heated_calciner(self,Qc):
-        #reference:https://doi.org/10.1016/j.jclepro.2019.02.049
+    def _cost_oxy_cfb_calciner(self,Qc):
+        #reference:https://doi.org/10.1016/j.ecmx.2020.100039
         #the referred year: 2018
         #the given Money unit: EUR
         #Qc unit: W
         year=2018
         HC_Dollars=13140*math.pow(Qc/1000,0.67)*self._Eur2Dollars[year]/1e6  #unit M$
+        HC=self._convert_to_RMB_in_target_year(HC_Dollars,year)
+        return HC
+
+    def _cost_rotary_kiln_calciner(self,Qc):
+        #reference:https://doi.org/10.1016/j.jclepro.2019.02.049
+        #the referred year: 2018
+        #the given Money unit: Dollar
+        #Qc unit: W
+        year=2018
+        HC_Dollars=533394*math.pow(Qc/1000/293,0.48)/1e6  #unit M$
         HC=self._convert_to_RMB_in_target_year(HC_Dollars,year)
         return HC
 

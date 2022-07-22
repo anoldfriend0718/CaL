@@ -197,8 +197,8 @@ if __name__=="__main__":
         design_inputs["T_water_prod_out"]=85
         design_inputs["HTCW"]=0
         design_inputs["HRCP"]=1
-        # design_inputs["obj"]="energy" 
-        design_inputs["obj"]="economic"  
+        design_inputs["obj"]="energy" 
+        # design_inputs["obj"]="economic"  
 
         economic_inputs={}
         economic_inputs["elec_price"]=0.165 #元/千瓦时
