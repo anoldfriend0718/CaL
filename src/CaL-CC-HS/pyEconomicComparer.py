@@ -6,12 +6,14 @@ class Wulumuqi_project(object):
     def __init__(self,economic_inputs) -> None:
         self.investment_cost=120*596.2/541.7 #百万人民币，2020
         self.operation_labour_cost_indictor=economic_inputs["operation_labour_cost_indictor"] 
-        self.maintain_labour_cost_indictor=economic_inputs["maintain_labour_cost_indictor"]
+        # self.maintain_cost_indictor=economic_inputs["maintain_cost_indictor"]
+        self.maintain_cost_indictor=0.025 ## hardcode, not different from the CaL project
         self._electric_price=economic_inputs["elec_price"] #RMB/kWh
-        self._operation_hours=economic_inputs["operation_hours"]
+        # self._operation_hours=economic_inputs["operation_hours"]
+        self._operation_hours=3435
         self.electricity=5489*1e4 #kWh
         self.electric_cost=self.electricity*self._electric_price/1e6 
-        self.operation_cost=(self.operation_labour_cost_indictor+self.maintain_labour_cost_indictor)*self.investment_cost\
+        self.operation_cost=(self.operation_labour_cost_indictor+self.maintain_cost_indictor)*self.investment_cost\
             +self.electric_cost
         self.energy_efficiency=0.97
 
@@ -43,7 +45,7 @@ class economic_comparer(object):
     def compare(self,plant_results):
         results={}
         electricity1=plant_results["metrics"]["energy"]["total_power"] #W
-        electricity2=self._p2.electricity*1e3/self._annular_operation_hours #W
+        electricity2=self._p2.electricity*1e3/self._p2._operation_hours #W
         mass_rate_CO2=plant_results["plant"]["carb"]["m_co2_capture"]
         specific_capture_energy=(electricity1-electricity2)/mass_rate_CO2 #J/kg
         results["specific_capture_energy"]=specific_capture_energy/1e6 #GJ/t
@@ -57,7 +59,7 @@ class economic_comparer(object):
 
         investment_cost2=self._p2.investment_cost
         operation_cost2=self._p2.operation_cost
-        annular_heat2=annular_heat1
+        annular_heat2=plant_results["metrics"]["energy"]["Q_hot_water"]*self._p2._operation_hours*3600 #J
         LCOH2=self._analyzer.LCOH(investment_cost2,operation_cost2,self._discount_ratio,
                 self._operation_years,annular_heat2)
         results["LCOH2"]=LCOH2 #RMB/GJ
@@ -77,7 +79,7 @@ if __name__=="__main__":
     economic_inputs["discount_ratio"]=6/100 #8%
     economic_inputs["operational_years"]=30
     economic_inputs["operation_labour_cost_indictor"]=0.025
-    economic_inputs["maintain_labour_cost_indictor"]=0.025
+    economic_inputs["maintain_cost_indictor"]=0.025
 
     comparer=economic_comparer(economic_inputs)
     results=comparer.compare(plant_results)

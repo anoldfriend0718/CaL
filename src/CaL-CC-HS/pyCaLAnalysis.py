@@ -37,7 +37,8 @@ class CaLAnalyser(object):
 
         #calciner side 
         calc_side=CalcProblem(parameters)
-        mass_camix_calc=carb_results["m_cao_unr_out"]+carb_results["m_caco3_out"]
+        calciner_capacity_factor=parameters["calciner_capacity_factor"]
+        mass_camix_calc=(carb_results["m_cao_unr_out"]+carb_results["m_caco3_out"])*calciner_capacity_factor
         calc_opt_results=minimize_scalar(calc_side.opt,args=(mass_camix_calc,),
             method='bounded',bounds=(0, 1),tol=1e-5)
         calc_mfrac=calc_opt_results.x
@@ -45,6 +46,7 @@ class CaLAnalyser(object):
         calc_inputs["mass_camix_in"]=mass_camix_calc
         calc_inputs["mfrac"]=calc_mfrac
         calc_results=calc_side.solve(calc_inputs)
+        calc_results["calciner_capacity_factor"]=calciner_capacity_factor
 
         #compose plant results
         plant_results={}
@@ -120,10 +122,11 @@ class CaLAnalyser(object):
     
     def analyze_energy_metrics(self,plant_results):
         analysis_results={}
+        calciner_capacity_factor=plant_results["calc"]["calciner_capacity_factor"]
         # thermal storage rate
         total_auxiliary_power=plant_results["carb"]["carb_auxiliary_power"]+\
-            plant_results["calc"]["calc_auxiliary_power"]
-        total_power=plant_results["calc"]["We_calc"]-total_auxiliary_power
+            plant_results["calc"]["calc_auxiliary_power"]/calciner_capacity_factor
+        total_power=plant_results["calc"]["We_calc"]/calciner_capacity_factor-total_auxiliary_power
         analysis_results["total_power"]=total_power
         analysis_results["Q_hot_water"]=plant_results["carb"]["Q_hot_water"]
         analysis_results["heat_storage_eff"]=analysis_results["Q_hot_water"]/total_power
@@ -185,28 +188,31 @@ if __name__=="__main__":
         flue_gas_composition["o2"]=0.0384
         flue_gas_composition["n2"]=0.6975 
         design_inputs={}
-        design_inputs["flue_gas_composition"]=flue_gas_composition
-        # parameters["vol_rate_flue_gas"]=6000/3600
+        design_inputs["flue_gas_composition"]=flue_gas_composition       
         design_inputs["user_heat_load"]=15.5e6 #15.5MW
         design_inputs["decarbonized_rate"]=0.9
         design_inputs["T_flue_gas"]=40
         design_inputs["T_carb"]=650
         design_inputs["T_calc"]=900
         design_inputs["cao_conversion"]=0.5
-        design_inputs["T_water_supply_in"]=60
         design_inputs["T_water_prod_out"]=85
+        design_inputs["T_water_supply_in"]=design_inputs["T_water_prod_out"]-25
+        design_inputs["storage_carbonator_distance"]=100
+        design_inputs["delta_T_pinch"]=15
+        design_inputs["calciner_capacity_factor"]=1
         design_inputs["HTCW"]=0
         design_inputs["HRCP"]=1
         design_inputs["obj"]="energy" 
         # design_inputs["obj"]="economic"  
 
         economic_inputs={}
-        economic_inputs["elec_price"]=0.165 #元/千瓦时
-        economic_inputs["operation_hours"]=3435 # hours
+        economic_inputs["calciner_cost_factor"]=1
+        economic_inputs["elec_price"]=0.165 #元/千瓦时  ##S6
+        economic_inputs["operation_hours"]=3435 # hours  ### S9
         economic_inputs["discount_ratio"]=6/100 #8%
         economic_inputs["operational_years"]=30
         economic_inputs["operation_labour_cost_indictor"]=0.025
-        economic_inputs["maintain_labour_cost_indictor"]=0.025
+        economic_inputs["maintain_cost_indictor"]=0.025
 
         ca=CaLAnalyser()
         results={}

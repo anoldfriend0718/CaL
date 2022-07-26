@@ -19,7 +19,7 @@ class Cost_Estimator(object):
     def solve(self,design,energy_analysis_results,economic_inputs):
         ## construct costs
         construct_costs={}
-        equipment_costs=self.calculate_equipment_costs(design)
+        equipment_costs=self.calculate_equipment_costs(design,economic_inputs)
         construct_costs["equipment"]=equipment_costs
         construct_costs["installation"]=piping_integration_cost_indictor*equipment_costs["total"]
         construct_costs["labour"]=construct_labour_cost_indictor*(equipment_costs["total"]+construct_costs["installation"])
@@ -30,7 +30,7 @@ class Cost_Estimator(object):
         ## operational costs
         operation_costs={}
         operation_costs["labour"]=economic_inputs["operation_labour_cost_indictor"]*construct_costs["total as-spent"]
-        operation_costs["maintain"]=economic_inputs["maintain_labour_cost_indictor"]*construct_costs["total as-spent"]
+        operation_costs["maintain"]=economic_inputs["maintain_cost_indictor"]*construct_costs["total as-spent"]
         operation_costs["electricity"]=economic_inputs["elec_price"]*(energy_analysis_results["total_power"])/1000* \
             economic_inputs["operation_hours"]/1e6
         operation_costs["total as-spent"]=operation_costs["labour"]+operation_costs["maintain"]+\
@@ -43,9 +43,9 @@ class Cost_Estimator(object):
     
         return investment_costs
 
-    def calculate_equipment_costs(self,design):
+    def calculate_equipment_costs(self,design,economic_inputs):
         equipment_costs={}
-        equipment_costs.update(self.calculate_calciner_costs(design["calc"]))
+        equipment_costs.update(self.calculate_calciner_costs(design["calc"],economic_inputs))
         equipment_costs.update(self.calculate_carbonator_costs(design["carb"]))
         equipment_costs["total"]=np.sum(list(equipment_costs.values()))
         return equipment_costs
@@ -77,11 +77,11 @@ class Cost_Estimator(object):
         return invCosts
 
 
-    def calculate_calciner_costs(self,calc_design):
+    def calculate_calciner_costs(self,calc_design,economic_inputs):
         invCosts={}
         # Calciner
         Qcalc=calc_design["We_calc"]
-        invCosts["Ccalc"]=self._cost_rotary_kiln_calciner(Qcalc)
+        invCosts["Ccalc"]=self._cost_rotary_kiln_calciner(Qcalc)*economic_inputs["calciner_cost_factor"]
         # CO2 compression train
         PCCT=-calc_design["CO2_compression_train"]["compressor_power"]
         invCosts["CCO2ct"]=self._cost_CO2_compression_train(PCCT)

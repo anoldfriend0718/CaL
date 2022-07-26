@@ -7,13 +7,13 @@ from pyCaLPlant import CalcinerSide, CarbonatorSide
 T_amb = 20
 p_amb = 101325
 convey_consumption = 10e3/100  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
-storage_carbonator_distance = 100  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+# storage_carbonator_distance = 100  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 cooling_eff = 0.8e-2  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 isentropic_eff_mc = 0.87 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 isentropic_eff_fan= 0.80 # reference: https://doi.org/10.1016/j.ecmx.2020.100038
 mechanical_eff = 0.97 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 p_co2_storage=75e5 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
-delta_T_pinch=15 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+# delta_T_pinch=15 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 carbonator_thermal_loss=0.01  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 flue_gas_pressure_loss_ratio = 0.01 #https://doi.org/10.1016/j.ecmx.2019.100025
 decarbon_flue_gas_pressure_loss_ratio  = 0.02 #estimated based on flue_gas_pressure_loss_ratio
@@ -41,6 +41,7 @@ class CalcProblem(object):
         self._cao_conversion=parameters["cao_conversion"]
         self._flue_gas_composistion=parameters["flue_gas_composition"]
         self._decarbonized_rate=parameters["decarbonized_rate"]
+        self._storage_carbonator_distance=parameters["storage_carbonator_distance"]
         calc_para=self._compose_calc_parameters()
         self._calcs=CalcinerSide(calc_para)
 
@@ -53,7 +54,7 @@ class CalcProblem(object):
         parameters["cao_conversion"] = self._cao_conversion
         parameters["calciner_eff"] = 1-calciner_thermal_loss
         parameters["convey_consumption"] = convey_consumption
-        parameters["storage_carbonator_distance"] = storage_carbonator_distance
+        parameters["storage_carbonator_distance"] = self._storage_carbonator_distance
         parameters["T_amb"] = T_amb
         parameters["p_amb"] = p_amb
         parameters["T_calc"]= self._T_calc
@@ -88,6 +89,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         self._T_flue_gas=carbonator_parameters["T_flue_gas"]
         self._T_water_supply_in=carbonator_parameters["T_water_supply_in"]
         self._T_water_prod_out=carbonator_parameters["T_water_prod_out"]
+        self._storage_carbonator_distance=carbonator_parameters["storage_carbonator_distance"]
+        self._delta_T_pinch=carbonator_parameters["delta_T_pinch"]
         self._HTCW=carbonator_parameters["HTCW"]
         self._HRCP=carbonator_parameters["HRCP"]
         self._obj=carbonator_parameters["obj"]
@@ -110,29 +113,29 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         if self._HTCW==1 and self._HRCP==1:
             Dim = 3  # 初始化Dim（决策变量维数）
             varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
-            lb = [T_amb+delta_T_pinch, #T_cao,in
-                T_amb+delta_T_pinch, #T_flue_gas,in
+            lb = [T_amb+self._delta_T_pinch, #T_cao,in
+                T_amb+self._delta_T_pinch, #T_flue_gas,in
                 self._T_water_supply_in]  # T_cold water  决策变量下界
-            ub = [self._T_carb-delta_T_pinch, #T_cao,in
-                self._T_carb-delta_T_pinch, #T_flue_gas,in
+            ub = [self._T_carb-self._delta_T_pinch, #T_cao,in
+                self._T_carb-self._delta_T_pinch, #T_flue_gas,in
                 self._T_water_prod_out]  #  T_hot water 决策变量上界
             lbin = [1,0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         elif self._HTCW==1 and self._HRCP==0:
             Dim = 2  # 初始化Dim（决策变量维数）
             varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
-            lb = [T_amb+delta_T_pinch, #T_cao,in
-                T_amb+delta_T_pinch] #T_flue_gas,in
-            ub = [self._T_carb-delta_T_pinch, #T_cao,in
-                self._T_carb-delta_T_pinch] #T_flue_gas,in
+            lb = [T_amb+self._delta_T_pinch, #T_cao,in
+                T_amb+self._delta_T_pinch] #T_flue_gas,in
+            ub = [self._T_carb-self._delta_T_pinch, #T_cao,in
+                self._T_carb-self._delta_T_pinch] #T_flue_gas,in
             lbin = [1,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,1]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         elif self._HTCW==0 and self._HRCP==1:
             Dim = 2  # 初始化Dim（决策变量维数）
             varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
-            lb = [T_amb+delta_T_pinch, #T_flue_gas,in
+            lb = [T_amb+self._delta_T_pinch, #T_flue_gas,in
                 0]  # m_water,in
-            ub = [self._T_carb-delta_T_pinch, #T_flue_gas,in
+            ub = [self._T_carb-self._delta_T_pinch, #T_flue_gas,in
                 200] # m_water,in ,depending on user hot load. Larger hot load, bigger this value#TODO: remove hard code
             lbin = [0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
@@ -169,9 +172,9 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["cao_conversion"]=self._cao_conversion
         parameters["carbonator_eff"]=1-carbonator_thermal_loss
         parameters["convey_consumption"]=convey_consumption 
-        parameters["storage_carbonator_distance"]=storage_carbonator_distance 
+        parameters["storage_carbonator_distance"]=self._storage_carbonator_distance 
         parameters["cooling_eff "]=cooling_eff
-        parameters["delta_T_pinch"]=delta_T_pinch 
+        parameters["delta_T_pinch"]=self._delta_T_pinch 
         parameters["T_amb"]=T_amb 
         parameters["p_amb"] = p_amb
         parameters["p_water_supply_in"] = parameters["p_amb"]
@@ -226,8 +229,8 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
                     #constrainst
                     c0=1-results["is_succeed"]
                     c1=results["hot_utility"]-self._hot_util #
-                    c2=results["T_cao_reactor_in"]-(self._T_carb-delta_T_pinch)
-                    # c3=T_amb+delta_T_pinch-result["T_cao_reactor_in"]
+                    c2=results["T_cao_reactor_in"]-(self._T_carb-self._delta_T_pinch)
+                    # c3=T_amb+self._delta_T_pinch-result["T_cao_reactor_in"]
                     constraints.append([c0,c1,c2])
                 else:
                     raise ValueError("Invalid HTCW or HRCP!")

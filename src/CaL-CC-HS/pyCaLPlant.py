@@ -316,9 +316,9 @@ class CalcinerSide(object):
         self._cooling_eff=parameters["cooling_eff"]
         self._delta_H_Tref = 178e3  # J/mole CaO
 
-    def solve(self, input):
-        mass_camix_in=input["mass_camix_in"]
-        mfrac=input["mfrac"]
+    def solve(self, inputs):
+        mass_camix_in=inputs["mass_camix_in"]
+        mfrac=inputs["mfrac"]
         results = {}
         calciner_results=self.calciner(mass_camix_in,mfrac)
         results.update(calciner_results)
