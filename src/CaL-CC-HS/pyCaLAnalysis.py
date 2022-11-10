@@ -206,6 +206,8 @@ if __name__=="__main__":
         # design_inputs["obj"]="economic"  
 
         economic_inputs={}
+        economic_inputs["make-up_limestone_percentage"]=0.1
+        economic_inputs["limestone_price"]=70
         economic_inputs["calciner_cost_factor"]=1
         economic_inputs["elec_price"]=0.165 #元/千瓦时  ##S6
         economic_inputs["operation_hours"]=3435 # hours  ### S9

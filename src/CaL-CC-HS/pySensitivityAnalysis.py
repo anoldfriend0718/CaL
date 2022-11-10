@@ -50,6 +50,8 @@ def run(parameters,results_folder,key_parameter,value):
     # design_inputs["obj"]="economic"  
 
     economic_inputs={}
+    economic_inputs["make-up_limestone_percentage"]=parameters["make-up_limestone_percentage"]
+    economic_inputs["limestone_price"]=70
     economic_inputs["calciner_cost_factor"]=parameters["calciner_cost_factor"]  ## S5
     economic_inputs["elec_price"]=parameters["elec_price"] #元/千瓦时  ##S6
     economic_inputs["operation_hours"]=parameters["operation_hours"]  # hours  ### S9
@@ -81,19 +83,21 @@ if __name__=="__main__":
         "elec_price":0.165,
         "maintain_cost_indictor":0.025,
         "calciner_capacity_factor":1,
-        "operation_hours":3435
+        "operation_hours":3435,
+        "make-up_limestone_percentage":0.1
     }
     results_folder="/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL/src/CaL-CC-HS/results"
     variables={
-        # "cao_conversion":[0.2,0.3,0.4,0.5,0.6],
-        # "T_water_prod_out":[80,85,90,100,110],
-        # "storage_carbonator_distance":[50,100,200,300],
-        # "delta_T_pinch":[10,15,20,30],
-        # "calciner_cost_factor":np.array([0.8,0.9,1,1.1,1.2])*base_parameters["calciner_cost_factor"],
-        # "elec_price":np.array([0.8,0.9,1,1.1,1.2])*base_parameters["elec_price"],
-        # "maintain_cost_indictor":[0.015,0.025,0.035,0.045],
-        # "calciner_capacity_factor":[1,1.5,2,2.5,3],
-        "operation_hours":[2000,3000,4000,5000,6000]
+        "cao_conversion":[0.2,0.3,0.4,0.5,0.6],
+        "T_water_prod_out":[80,85,90,100,110],
+        "storage_carbonator_distance":[50,100,200,300],
+        "delta_T_pinch":[10,15,20,30],
+        "calciner_cost_factor":np.array([0.8,0.9,1,1.1,1.2])*base_parameters["calciner_cost_factor"],
+        "elec_price":np.array([0.8,0.9,1,1.1,1.2])*base_parameters["elec_price"],
+        "maintain_cost_indictor":[0.015,0.025,0.035,0.045],
+        "calciner_capacity_factor":[1,1.5,2,2.5,3],
+        "operation_hours":[2000,3000,4000,5000,6000],
+        "make-up_limestone_percentage":[0.05,0.1,0.2,0.3]
     }
 
     for key_parameter in variables.keys():

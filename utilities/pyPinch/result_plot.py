@@ -25,17 +25,17 @@ class ResultPlot(object):
         grandCompositeCurve=pinch.grandCompositeCurve
         cycle = pplot.Cycle("seaborn").by_key()['color']
 
-        with pplot.rc.context({'lines.linewidth': 2,"axes.labelsize":12,"tick.labelsize":11,
-            "lines.marker":"o","lines.markersize":4,"legend.fontsize":14,"grid":False}):
+        with pplot.rc.context({'lines.linewidth': 2,"axes.labelsize":18,"tick.labelsize":14,
+            "lines.marker":"o","lines.markersize":4,"legend.fontsize":18,"grid":False}):
             fig, axs = pplot.subplots(refaspect=(4, 3), axwidth=4,ncols=2, nrows=1, share=False)
-            axs[0].plot(compositeDiagram['hot']['H'], compositeDiagram['hot']['T'],color=cycle[2],label="hot streams")
-            axs[0].plot(compositeDiagram['cold']['H'], compositeDiagram['cold']['T'],color=cycle[0],label="cold streams")
-            axs[0].format(xlabel="thermal flux (kW)",ylabel="temperature ($^o$C)")
+            axs[0].plot(np.array(compositeDiagram['hot']['H'])/1000, compositeDiagram['hot']['T'],color=cycle[2],label="hot streams")
+            axs[0].plot(np.array(compositeDiagram['cold']['H'])/1000, compositeDiagram['cold']['T'],color=cycle[0],label="cold streams")
+            axs[0].format(xlabel="thermal flux (MW)",ylabel="temperature ($^o$C)")
             axs[0].legend(loc="best", ncols=1, fancybox=True)
 
-            axs[1].plot(grandCompositeCurve['H'], grandCompositeCurve['T'])
-            maxH=np.max(grandCompositeCurve['H'])
-            axs[1].format(xlabel="thermal flux (kW)",ylabel="temperature ($^o$C)",xlim=[0, maxH*1.1])
+            axs[1].plot(np.array(grandCompositeCurve['H'])/1000, grandCompositeCurve['T'])
+            maxH=np.max(grandCompositeCurve['H'])/1000
+            axs[1].format(xlabel="thermal flux (MW)",ylabel="temperature ($^o$C)",xlim=[0, maxH*1.1])
         return fig, axs
 
     def plotPowerPercentagePie(self,results):
@@ -122,25 +122,27 @@ class ResultPlot(object):
     
     def plotPowerAndCostBars(self,results):
         plant_results=results["plant"]
-        calc_power_labels=["Calc","CO$_{2}$ comp","Solid conveying", "Comp cool"]
+        calc_power_labels=["Calc","CO$_{2}$ comp","Solid\nconveying", "Comp.\ncool"]
         calc_results=plant_results["calc"]
         calc_powers=[calc_results["We_calc"],calc_results["CO2_compression_train"]["compressor_power"]*(-1),calc_results["conveying_power"]*(-1),
                     calc_results["CO2_compression_train"]["cooling_power"]*(-1)]
 
         carb_powers=plant_results["carb"]
-        carb_power_labels=["Gas fan", "Solid conveying","Water pump"]
+        carb_power_labels=["Gas\nfan", "Solid\nconveying","Water\npump"]
         carb_powers=[carb_powers["flue_gas_fan_power"]*(-1),carb_powers["conveying_power"]*(-1),carb_powers["water_pump_power"]*(-1)]
         max_power=max(np.max(calc_powers)/1e6,np.max(carb_powers)/1e6)
 
-        calc_cost_labels=["Calc","Comp. train", "HEN"]
+        calc_cost_labels=["Calc","Comp.\ntrain", "HEN"]
         economics=results["metrics"]["economic"]["construction"]["equipment"]
         calc_costs=[economics["Ccalc"],economics["CCO2ct"],economics["CHENCalc"]]
-        carb_cost_labels=["Carb","HEN","Gas fan","Water pump"]
+        carb_cost_labels=["Carb","HEN","Gas\nfan","Water\npump"]
         carb_costs=[economics["Ccarb"],economics["CHENCarb"],economics["CFF"],economics["CWaterPump"]]
         max_cost=max(np.max(calc_costs),np.max(carb_costs))
 
         rotation=0
-        with pplot.rc.context({'lines.linewidth': 2,"lines.marker":"o","lines.markersize":4,"legend.fontsize":14,"axes.titlesize":14,"grid":False}):
+        with pplot.rc.context({'lines.linewidth': 2,"lines.marker":"o","lines.markersize":4,
+            "axes.labelsize":18,"tick.labelsize":18,"legend.fontsize":18,"axes.titlesize":18,
+            "grid":False}):
             fig, axs = pplot.subplots(refaspect=(4, 3), axwidth=4,ncols=2, nrows=2, share=False)
 
             indexs0=np.arange(0,len(calc_powers))
@@ -148,26 +150,26 @@ class ResultPlot(object):
             axs[0].set_xticks(ticks=indexs0)
             axs[0].set_xticklabels(labels=calc_power_labels,rotation=rotation)
             axs[0].format(ylim=[0,max_power*1.03],title="Calciner side")
-            axs[0].set_ylabel(ylabel="component power (MW)",fontsize=14)
+            axs[0].set_ylabel(ylabel="component power (MW)")
 
             indexs1=np.arange(0,len(carb_powers))
             axs[1].bar(np.array(carb_powers)/1e6, width=0.7, negpos=True, edgecolor='k')
             axs[1].set_xticks(ticks=indexs1)
             axs[1].set_xticklabels(labels=carb_power_labels,rotation=rotation)
             axs[1].format(ylim=[0,max_power*1.03],title="Carbonator side")
-            axs[1].set_ylabel(ylabel="component power (MW)",fontsize=14)
+            axs[1].set_ylabel(ylabel="component power (MW)")
 
             indexs2=np.arange(0,len(calc_costs))
             axs[2].bar(calc_costs, width=0.7, negpos=True, edgecolor='k')
             axs[2].set_xticks(ticks=indexs2)
             axs[2].set_xticklabels(labels=calc_cost_labels,rotation=rotation)
             axs[2].format(ylim=[0,max_cost*1.03],title="Calciner side")
-            axs[2].set_ylabel(ylabel="component price (million RMB)",fontsize=14)
+            axs[2].set_ylabel(ylabel="component price (million RMB)")
 
             indexs3=np.arange(0,len(carb_costs))
             axs[3].bar(carb_costs, width=0.7, negpos=True, edgecolor='k')
             axs[3].set_xticks(ticks=indexs3)
             axs[3].set_xticklabels(labels=carb_cost_labels,rotation=rotation)
             axs[3].format(ylim=[0,max_cost*1.03],title="Carbonator side")
-            axs[3].set_ylabel(ylabel="component price (million RMB)",fontsize=14)
+            axs[3].set_ylabel(ylabel="component price (million RMB)")
         return fig, axs

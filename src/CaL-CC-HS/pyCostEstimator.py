@@ -29,12 +29,14 @@ class Cost_Estimator(object):
 
         ## operational costs
         operation_costs={}
+        operation_costs["make-up_limestone"]=economic_inputs["make-up_limestone_percentage"]*economic_inputs["operation_hours"]* \
+            (design["carb"]["m_caco3_out"]+design["carb"]["m_cao_unr_out"])*3.6*economic_inputs["limestone_price"]/1e6
         operation_costs["labour"]=economic_inputs["operation_labour_cost_indictor"]*construct_costs["total as-spent"]
         operation_costs["maintain"]=economic_inputs["maintain_cost_indictor"]*construct_costs["total as-spent"]
         operation_costs["electricity"]=economic_inputs["elec_price"]*(energy_analysis_results["total_power"])/1000* \
             economic_inputs["operation_hours"]/1e6
         operation_costs["total as-spent"]=operation_costs["labour"]+operation_costs["maintain"]+\
-            operation_costs["electricity"]
+            operation_costs["electricity"]+operation_costs["make-up_limestone"]
   
         ## compose results
         investment_costs={}
