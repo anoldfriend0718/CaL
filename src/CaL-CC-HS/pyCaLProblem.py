@@ -14,12 +14,11 @@ isentropic_eff_fan= 0.80 # reference: https://doi.org/10.1016/j.ecmx.2020.100038
 mechanical_eff = 0.97 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 p_co2_storage=75e5 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 # delta_T_pinch=15 # reference: https://doi.org/10.1016/j.ecmx.2019.100025
-carbonator_thermal_loss=0.01  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
+# carbonator_thermal_loss=0.01  # reference: https://doi.org/10.1016/j.ecmx.2019.100025
 flue_gas_pressure_loss_ratio = 0.01 #https://doi.org/10.1016/j.ecmx.2019.100025
 decarbon_flue_gas_pressure_loss_ratio  = 0.02 #estimated based on flue_gas_pressure_loss_ratio
 carbonator_pressure_loss=15e3 #https://doi.org/10.1016/j.jclepro.2019.02.049
 
-calciner_thermal_loss=0.01
 deltaTmin_SSHX=20  #https://doi.org/10.1016/j.apenergy.2016.04.053
 deltaTmin_SGHX=15  #https://doi.org/10.1016/j.apenergy.2016.04.053
 T_cooling_co2=20   #https://doi.org/10.1016/j.apenergy.2016.04.053
@@ -42,6 +41,7 @@ class CalcProblem(object):
         self._flue_gas_composistion=parameters["flue_gas_composition"]
         self._decarbonized_rate=parameters["decarbonized_rate"]
         self._storage_carbonator_distance=parameters["storage_carbonator_distance"]
+        self._calciner_thermal_loss=parameters["calciner_thermal_loss"]
         calc_para=self._compose_calc_parameters()
         self._calcs=CalcinerSide(calc_para)
 
@@ -52,7 +52,7 @@ class CalcProblem(object):
         parameters["mechanical_eff"] = mechanical_eff
         parameters["decarbonized_rate"] = self._decarbonized_rate
         parameters["cao_conversion"] = self._cao_conversion
-        parameters["calciner_eff"] = 1-calciner_thermal_loss
+        parameters["calciner_eff"] = 1-self._calciner_thermal_loss
         parameters["convey_consumption"] = convey_consumption
         parameters["storage_carbonator_distance"] = self._storage_carbonator_distance
         parameters["T_amb"] = T_amb
@@ -68,12 +68,12 @@ class CalcProblem(object):
         parameters["HTC_SGHX"]=HTC_SGHX
         return parameters
 
-    def solve(self,inputs):
-        results=self._calcs.solve(inputs)
+    def solve(self,mass_camix,mass_caco3_make_up,calc_mfrac):
+        results=self._calcs.solve(mass_camix,mass_caco3_make_up,calc_mfrac)
         return results
 
-    def opt(self, m,mfrac):
-        results=self._calcs.calciner(mfrac,m)
+    def opt(self, mfrac, mass_camix, mass_caco3_make_up):
+        results=self._calcs.calciner(mass_camix, mass_caco3_make_up, mfrac)
         return results["We_calc"]
 
 
@@ -91,6 +91,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         self._T_water_prod_out=carbonator_parameters["T_water_prod_out"]
         self._storage_carbonator_distance=carbonator_parameters["storage_carbonator_distance"]
         self._delta_T_pinch=carbonator_parameters["delta_T_pinch"]
+        self._carbonator_thermal_loss=carbonator_parameters["carbonator_thermal_loss"]
         self._HTCW=carbonator_parameters["HTCW"]
         self._HRCP=carbonator_parameters["HRCP"]
         self._obj=carbonator_parameters["obj"]
@@ -101,7 +102,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         # for plant constraints
         self._hot_util=10
         # for concurrent worker
-        self._max_map_executor=10
+        self._max_map_executor=20
         M, maxormins, Dim, varTypes, lb, ub, lbin, ubin = self._compose_generic_algorithm_paramters()
         # 调用父类构造方法完成实例化
         ea.Problem.__init__(self, name, M, maxormins, Dim, varTypes, lb, ub, lbin, ubin)
@@ -110,27 +111,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         ## generic algorithm parameters 
         M = 1  # 优化目标个数
         maxormins = self._get_maxormins(M)  # 初始化maxormins（目标最小最大化标记列表，1：最小化该目标；-1：最大化该目标）
-        if self._HTCW==1 and self._HRCP==1:
-            Dim = 3  # 初始化Dim（决策变量维数）
-            varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
-            lb = [T_amb+self._delta_T_pinch, #T_cao,in
-                T_amb+self._delta_T_pinch, #T_flue_gas,in
-                self._T_water_supply_in]  # T_cold water  决策变量下界
-            ub = [self._T_carb-self._delta_T_pinch, #T_cao,in
-                self._T_carb-self._delta_T_pinch, #T_flue_gas,in
-                self._T_water_prod_out]  #  T_hot water 决策变量上界
-            lbin = [1,0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
-            ubin = [1,1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
-        elif self._HTCW==1 and self._HRCP==0:
-            Dim = 2  # 初始化Dim（决策变量维数）
-            varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
-            lb = [T_amb+self._delta_T_pinch, #T_cao,in
-                T_amb+self._delta_T_pinch] #T_flue_gas,in
-            ub = [self._T_carb-self._delta_T_pinch, #T_cao,in
-                self._T_carb-self._delta_T_pinch] #T_flue_gas,in
-            lbin = [1,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
-            ubin = [1,1]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
-        elif self._HTCW==0 and self._HRCP==1:
+        if self._HTCW==0 and self._HRCP==1:
             Dim = 2  # 初始化Dim（决策变量维数）
             varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
             lb = [T_amb+self._delta_T_pinch, #T_flue_gas,in
@@ -140,7 +121,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
             lbin = [0,0] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
             ubin = [1,0]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
         else:
-            raise ValueError("Invalid HTCW or HRCP!")
+            raise ValueError("only support HRCP now!")
 
         return M,maxormins,Dim,varTypes,lb,ub,lbin,ubin
 
@@ -170,7 +151,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
         parameters["T_water_prod_out"]=self._T_water_prod_out
         parameters["T_carb"]=self._T_carb
         parameters["cao_conversion"]=self._cao_conversion
-        parameters["carbonator_eff"]=1-carbonator_thermal_loss
+        parameters["carbonator_eff"]=1-self._carbonator_thermal_loss
         parameters["convey_consumption"]=convey_consumption 
         parameters["storage_carbonator_distance"]=self._storage_carbonator_distance 
         parameters["cooling_eff "]=cooling_eff
@@ -196,33 +177,18 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
             # map
             for i in np.arange(0,case_num,1):
                 inputs={}
-                if self._HTCW==1 and self._HRCP==1:
-                    inputs["T_flue_gas_reactor_in"]=Vars[i,0]
-                    inputs["T_cao_reactor_in"]=Vars[i,1]
-                    inputs["T_water_reactor_in"]=Vars[i,2]
-                elif self._HTCW==1 and self._HRCP==0:
-                    inputs["T_flue_gas_reactor_in"]=Vars[i,0]
-                    inputs["T_cao_reactor_in"]=Vars[i,1]
-                elif self._HTCW==0 and self._HRCP==1:
+                if self._HTCW==0 and self._HRCP==1:
                     inputs["T_flue_gas_reactor_in"]=Vars[i,0]
                     inputs["m_water_in"]=Vars[i,1]
                 else:
-                    raise ValueError("Invalid HTCW or HRCP!")
+                    raise ValueError("only support HRCP now!")
                 future=map_executor_pool.submit(self._carbonatorSide.solve,inputs)
                 futures.append(future)
             # reduce
             for _, future in enumerate(futures):
+                # print("I am here")
                 results=future.result()
-                if self._HTCW==1:
-                    # objective function
-                    obj=self._get_obj(results)
-                    objs.append(obj)
-                    #constrainst
-                    c0=1-results["is_succeed"]
-                    c1=results["hot_utility"]-self._hot_util #
-                    c2=-results["m_water_in"]
-                    constraints.append([c0,c1,c2])
-                elif self._HRCP==1:
+                if self._HRCP==1:
                     # objective function
                     obj=self._get_obj(results)
                     objs.append(obj)
@@ -233,7 +199,7 @@ class CarbProblem(ea.Problem):  # 继承Problem父类
                     # c3=T_amb+self._delta_T_pinch-result["T_cao_reactor_in"]
                     constraints.append([c0,c1,c2])
                 else:
-                    raise ValueError("Invalid HTCW or HRCP!")
+                    raise ValueError("only support HRCP now!")
         f=np.reshape(objs,(-1,1)) # 计算目标函数值矩阵
         CV=np.array(constraints) # 构建违反约束程度矩阵
         return f, CV

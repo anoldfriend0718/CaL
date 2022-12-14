@@ -7,7 +7,8 @@ construct_labour_cost_indictor=0.5
 engineering_project_cost_indictor=0.35
 TASC_multiplier=1.13
 piping_integration_cost_indictor=0.05
-
+M_cao = 56e-3  # kg/mol
+M_caco3 = 100e-3  # kg/mol
 
 class Cost_Estimator(object):
     def __init__(self) -> None:
@@ -24,13 +25,15 @@ class Cost_Estimator(object):
         construct_costs["installation"]=piping_integration_cost_indictor*equipment_costs["total"]
         construct_costs["labour"]=construct_labour_cost_indictor*(equipment_costs["total"]+construct_costs["installation"])
         construct_costs["engineering&project"]=engineering_project_cost_indictor*(equipment_costs["total"]+construct_costs["installation"])
+        construct_costs["initial_material"]=self.calculate_material_costs(design,economic_inputs)
         construct_costs["total as-spent"]=TASC_multiplier*(equipment_costs["total"]+construct_costs["installation"]+
-            construct_costs["labour"]+construct_costs["engineering&project"])
+            construct_costs["labour"]+construct_costs["engineering&project"])+construct_costs["initial_material"]
 
         ## operational costs
         operation_costs={}
-        operation_costs["make-up_limestone"]=economic_inputs["make-up_limestone_percentage"]*economic_inputs["operation_hours"]* \
-            (design["carb"]["m_caco3_out"]+design["carb"]["m_cao_unr_out"])*3.6*economic_inputs["limestone_price"]/1e6
+        make_up_limestone_percentage=design["calc"]["make-up_limestone_percentage"]
+        operation_costs["make-up_limestone"]=design["carb"]["mole_camix_in"]*make_up_limestone_percentage \
+            *M_caco3*economic_inputs["operation_hours"]*3.6*economic_inputs["limestone_price"]/1e6
         operation_costs["labour"]=economic_inputs["operation_labour_cost_indictor"]*construct_costs["total as-spent"]
         operation_costs["maintain"]=economic_inputs["maintain_cost_indictor"]*construct_costs["total as-spent"]
         operation_costs["electricity"]=economic_inputs["elec_price"]*(energy_analysis_results["total_power"])/1000* \
@@ -44,6 +47,13 @@ class Cost_Estimator(object):
         investment_costs["operation"]=operation_costs
     
         return investment_costs
+
+    def calculate_material_costs(self,design,economic_inputs):
+        CaCO3_storage_mass_circulated=design["calc"]["CaCO3_storage_mass_circulated"]
+        CaCO3_storage_mass_make_up=design["calc"]["CaCO3_storage_mass_make_up"]
+        total_CaCO3_storage_mass_ton=(CaCO3_storage_mass_circulated+CaCO3_storage_mass_make_up)/1000
+        initial_material_cost=economic_inputs["limestone_price"]*total_CaCO3_storage_mass_ton/1e6
+        return initial_material_cost
 
     def calculate_equipment_costs(self,design,economic_inputs):
         equipment_costs={}

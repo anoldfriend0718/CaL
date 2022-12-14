@@ -107,6 +107,27 @@ class Cp0mass_Wrapper(object):
 
         return fluid
 
+    def cp_camix_mean(self, T1, T2, X):
+        cp_cao_mean = self.cp0mass_mean("cao", T1, T2)
+        cp_caco3_mean = self.cp0mass_mean("caco3", T1, T2)
+        mX=self.convert_X_to_mX(X)
+        cp_camix_mean = cp_caco3_mean*mX+cp_cao_mean*(1-mX)
+        return cp_camix_mean
+
+    def cp_camix(self, T1, X):
+        cp_cao = self.cp0mass("cao", T1)
+        cp_caco3 = self.cp0mass("caco3", T1)
+        mX=self.convert_X_to_mX(X)
+        cp_camix = cp_caco3*mX+cp_cao*(1-mX)
+        return cp_camix
+
+    def convert_X_to_mX(self,X):
+        M_cao = 56e-3  # kg/mol
+        M_caco3 = 100e-3  # kg/mol
+        molar_mass=X*M_caco3+(1-X)*M_cao
+        mX=X*M_caco3/molar_mass
+        return mX
+
     def _cp0mass_gas(self, T, p, fluid):
         cp = CP.PropsSI('C', 'T', T+273.15, 'P', p, fluid)  # J/kg/k
         return cp

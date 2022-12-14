@@ -18,13 +18,17 @@ from pyCostEstimator import Cost_Estimator
 from pyEconomicComparer import economic_comparer
 
 
+M_cao = 56e-3  # kg/mol
+M_caco3 = 100e-3  # kg/mol
+rho_CaCO3=2710 # kg/m3
+
 class CaLAnalyser(object):
     def __init__(self):
         self._tmp_carb_results={}
      
     def solve(self,parameters):
         # carbonator side
-        flue_gas_rate_s=0.1
+        flue_gas_rate_s=15
         flue_gas_rate_e=20 #TODO: hardcode, depending on the user hot load
         target_heat_load=parameters["user_heat_load"]
         # xtol=0.0001 #m3/s
@@ -38,15 +42,26 @@ class CaLAnalyser(object):
         #calciner side 
         calc_side=CalcProblem(parameters)
         calciner_capacity_factor=parameters["calciner_capacity_factor"]
-        mass_camix_calc=(carb_results["m_cao_unr_out"]+carb_results["m_caco3_out"])*calciner_capacity_factor
-        calc_opt_results=minimize_scalar(calc_side.opt,args=(mass_camix_calc,),
-            method='bounded',bounds=(0, 1),tol=1e-5)
+        mass_camix=carb_results["m_camix_out"]*calciner_capacity_factor
+        M_camix=parameters["cao_conversion"]*M_caco3+(1-parameters["cao_conversion"])*M_cao
+        mole_camix=mass_camix/M_camix
+        make_up_ratio=calc_side._calcs.make_up_ratio
+        mass_caco3_make_up=mole_camix*make_up_ratio*M_caco3
+
+        calc_opt_results=minimize_scalar(calc_side.opt,args=(mass_camix,mass_caco3_make_up),
+            method='bounded',bounds=(0, 1),tol=1e-5) 
         calc_mfrac=calc_opt_results.x
-        calc_inputs={}
-        calc_inputs["mass_camix_in"]=mass_camix_calc
-        calc_inputs["mfrac"]=calc_mfrac
-        calc_results=calc_side.solve(calc_inputs)
+        calc_results=calc_side.solve(mass_camix,mass_caco3_make_up,calc_mfrac)
+    
+        # post process
         calc_results["calciner_capacity_factor"]=calciner_capacity_factor
+        calc_results["CaCO3_storage_duration_hours"]=parameters["CaCO3_storage_duration_hours"]
+        calc_results["make-up_limestone_percentage"]=make_up_ratio
+        mole_Ca_initial_storage=carb_results["mole_camix_in"]*3600*parameters["CaCO3_storage_duration_hours"]
+        calc_results["CaCO3_storage_mass_circulated"]=mole_Ca_initial_storage*(1-make_up_ratio)*M_caco3
+        calc_results["CaCO3_storage_volume_circulated"]=calc_results["CaCO3_storage_mass_circulated"]/rho_CaCO3
+        calc_results["CaCO3_storage_mass_make_up"]=mole_Ca_initial_storage*make_up_ratio*M_caco3
+        calc_results["CaCO3_storage_volume_make_up"]=calc_results["CaCO3_storage_mass_make_up"]/rho_CaCO3
 
         #compose plant results
         plant_results={}
@@ -194,19 +209,21 @@ if __name__=="__main__":
         design_inputs["T_flue_gas"]=40
         design_inputs["T_carb"]=650
         design_inputs["T_calc"]=900
-        design_inputs["cao_conversion"]=0.5
+        design_inputs["calciner_thermal_loss"]=0.06
+        design_inputs["carbonator_thermal_loss"]=0.01
+        design_inputs["cao_conversion"]=0.6
         design_inputs["T_water_prod_out"]=85
         design_inputs["T_water_supply_in"]=design_inputs["T_water_prod_out"]-25
         design_inputs["storage_carbonator_distance"]=100
         design_inputs["delta_T_pinch"]=15
         design_inputs["calciner_capacity_factor"]=1
+        design_inputs["CaCO3_storage_duration_hours"]=24*7
         design_inputs["HTCW"]=0
         design_inputs["HRCP"]=1
         design_inputs["obj"]="energy" 
         # design_inputs["obj"]="economic"  
 
         economic_inputs={}
-        economic_inputs["make-up_limestone_percentage"]=0.1
         economic_inputs["limestone_price"]=70
         economic_inputs["calciner_cost_factor"]=1
         economic_inputs["elec_price"]=0.165 #元/千瓦时  ##S6

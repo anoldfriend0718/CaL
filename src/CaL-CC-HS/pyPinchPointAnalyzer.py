@@ -10,15 +10,21 @@ from pyPinch import PyPinch
 import pandas as pd
 import CoolProp.CoolProp as CP
 from Cp0massWrapper import Cp0mass_Wrapper
+from pyMakeUpFlowBalaner import Make_Up_Flow_Balaner
+
 
 class Pinch_point_analyzer(object):
     def __init__(self, inputs) -> None:
+        self._X=inputs["cao_conversion"]
+        make_up_balaner=Make_Up_Flow_Balaner()
+        make_up_results=make_up_balaner.solve(self._X)
+        self._Y=make_up_results["caco3_mole_fraction_calciner_outlet"] #Y
+
         self._materials=["Ca","Gas","Gas","Ca","Water"]
         self._HTCs={"Ca":300,"Water":2500,"Gas":600}
 
-        self._m_caco3 = inputs["m_caco3_out"]
-        self._m_cao_unr = inputs["m_cao_unr_out"]
-        self._m_cao_i = inputs["m_cao_in"]
+        self._m_camix_out_H = inputs["m_camix_out"]
+        self._m_camix_in_C = inputs["m_camix_in"]
         self._m_decarbonized_flue_gas = inputs["m_deconbonized_flue_gas_out"]
         self._m_flue_gas_in = inputs["m_flue_gas_in"]
         self._m_water_in = inputs["m_water_in"]
@@ -53,16 +59,13 @@ class Pinch_point_analyzer(object):
         pinch_point_data["FLOWRATE"] = {}
         pinch_point_data["CP"] = {}
 
-        ## H1: CaCO3+CaO_unr
+        ## H1: Camix out: CaCO3+CaO_unr
         pinch_point_data["TSUPPLY"]["H_CaM"] = self._T_carb
         pinch_point_data["TTARGET"]["H_CaM"] = self._T_amb
-        pinch_point_data["FLOWRATE"]["H_CaM"] = self._m_caco3+self._m_cao_unr
-        pinch_point_data["ENERGY"]["H_CaM"] =\
-            (self._m_caco3*self._pw.cp0mass_mean("caco3", self._T_amb, self._T_carb) +
-             self._m_cao_unr*self._pw.cp0mass_mean("cao", self._T_amb, self._T_carb)) * \
-            (self._T_carb-self._T_amb)
-        pinch_point_data["CP"]["H_CaM"] = pinch_point_data["ENERGY"]["H_CaM"] / \
-            (self._T_carb-self._T_amb)
+        pinch_point_data["FLOWRATE"]["H_CaM"] = self._m_camix_out_H
+        pinch_point_data["CP"]["H_CaM"] = self._m_camix_out_H*self._pw.cp_camix_mean(self._T_amb,self._T_carb,self._X)
+        pinch_point_data["ENERGY"]["H_CaM"] =pinch_point_data["CP"]["H_CaM"]*(self._T_carb-self._T_amb)
+        
 
         # H2: decarbonized flue gas
         pinch_point_data["TSUPPLY"]["H_flue_gas_decarb"] = self._T_carb
@@ -90,15 +93,12 @@ class Pinch_point_analyzer(object):
         pinch_point_data["CP"]["C_flue_gas"] = pinch_point_data["ENERGY"]["C_flue_gas"] / \
             (self._T_flue_gas_reactor_in-self._T_flue_gas_fan_out)
 
-        ## C2: CaO
+        ## C2: Camix out: in 
         pinch_point_data["TSUPPLY"]["C_CaO"] = self._T_amb
         pinch_point_data["TTARGET"]["C_CaO"] = self._T_cao_reactor_in
-        pinch_point_data["FLOWRATE"]["C_CaO"] = self._m_cao_i
-        pinch_point_data["ENERGY"]["C_CaO"] = self._m_cao_i * \
-            self._pw.cp0mass_mean("cao", self._T_amb, self._T_cao_reactor_in) * \
-            (self._T_cao_reactor_in-self._T_amb)
-        pinch_point_data["CP"]["C_CaO"] = pinch_point_data["ENERGY"]["C_CaO"] / \
-            (self._T_cao_reactor_in-self._T_amb)
+        pinch_point_data["FLOWRATE"]["C_CaO"] = self._m_camix_in_C
+        pinch_point_data["CP"]["C_CaO"] = self._m_camix_in_C*self._pw.cp_camix_mean(self._T_amb,self._T_cao_reactor_in,self._Y)
+        pinch_point_data["ENERGY"]["C_CaO"] =pinch_point_data["CP"]["C_CaO"]*(self._T_cao_reactor_in-self._T_amb)
 
         ## C3: water
         if self._HRCP==1:
@@ -112,6 +112,8 @@ class Pinch_point_analyzer(object):
                             'P', self._p_water, "REFPROP::water"))
             pinch_point_data["CP"]["C_water"] = pinch_point_data["ENERGY"]["C_water"] / \
                 (self._T_water_reactor_in-self._T_water_supply_in)
+        else:
+            raise ValueError("only support HRCP now!")
 
         self._pinch_point_data = pinch_point_data
 
