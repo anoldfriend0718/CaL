@@ -4,6 +4,7 @@ tmp*
 *.svg
 **/results/*
 
+src/**/*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

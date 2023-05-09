@@ -71,7 +71,7 @@ class economic_comparer(object):
 
 
 if __name__=="__main__":
-    with open("/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL/src/CaL-CC-HS/tmp_results4.json","r") as fp:
+    with open("/home/zyq0416/workspace/CaL/src/CaL-CC-HS/tmp_results4.json","r") as fp:
         plant_results=json.load(fp)
     economic_inputs={}
     economic_inputs["elec_price"]=0.165 #元/千瓦时

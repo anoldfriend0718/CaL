@@ -1,7 +1,7 @@
 import os
 import sys
 # CaLRepo = os.environ.get("CaLRepo")
-CaLRepo ='/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
+CaLRepo ='/home/zyq0416/workspace/CaL'
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
 
