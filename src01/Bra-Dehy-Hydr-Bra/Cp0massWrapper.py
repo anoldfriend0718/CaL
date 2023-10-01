@@ -9,7 +9,9 @@ from scipy import interpolate
 import numpy as np
 import pandas as pd
 import CoolProp.CoolProp as CP
-
+M_cao = 56e-3  # kg/mol
+M_caoh2 = 74e-3  # kg/mol
+M_caco3 = 100e-3  # kg/mol
 class Cp0mass_Wrapper(object):
     def __init__(self,flue_gas_composistion) -> None:
         total_mole_frac = flue_gas_composistion["co2"] + \
@@ -24,7 +26,7 @@ class Cp0mass_Wrapper(object):
         norm_flue_gas_composition["o2"] = self._o2_mole_frac
         self._norm_flue_gas_composition=norm_flue_gas_composition
 
-        self.f_cao, self.f_caoh2= self._read_solid_properties()
+        self.f_cao, self.f_caoh2,self.f_caco3= self._read_solid_properties()
     # T: oC
     # cp: J/kg/K
     def cp0mass(self, material, T, p=1e5):
@@ -39,6 +41,8 @@ class Cp0mass_Wrapper(object):
             cp = self._cp0mass_cao(T)
         elif material == "caoh2":
             cp = self._cp0mass_caoh2(T)
+        elif material == "caco3":
+            cp = self._cp0mass_caco3(T)
         else:
             raise ValueError(f"Cp0mass of {material} is not supported")
         return cp
@@ -63,7 +67,8 @@ class Cp0mass_Wrapper(object):
         df = pd.read_csv(data_csv)
         f_cao = interpolate.interp1d(df["TEMP"], df["CAO"],fill_value="extrapolate")
         f_caoh2 = interpolate.interp1d(df["TEMP"], df["CAOH2"],fill_value="extrapolate")
-        return f_cao, f_caoh2
+        f_caco3 = interpolate.interp1d(df["TEMP"], df["CACO3"],fill_value="extrapolate")
+        return f_cao, f_caoh2,f_caco3
 
     def _cp0mass_cao(self, T):
         cp = float(self.f_cao(T))
@@ -71,6 +76,9 @@ class Cp0mass_Wrapper(object):
 
     def _cp0mass_caoh2(self, T):
         cp = float(self.f_caoh2(T))
+        return cp
+    def _cp0mass_caco3(self, T):
+        cp = float(self.f_caco3(T))
         return cp
 
     def _cp0mass_co2(self, T, p):
@@ -93,18 +101,40 @@ class Cp0mass_Wrapper(object):
 
         return fluid
 
-    def cp_camix_mean(self, T1, T2, X):
+    def cp_camix_mean(self, T1, T2, X,Y=1):
         cp_cao_mean = self.cp0mass_mean("cao", T1, T2)
         cp_caoh2_mean = self.cp0mass_mean("caoh2", T1, T2)
+        cp_caco3_mean = self.cp0mass_mean("caco3", T1, T2)
         mX=self.convert_X_to_mX(X)
-        cp_camix_mean = cp_caoh2_mean*mX+cp_cao_mean*(1-mX)
+        cp_camix_mean = (cp_caoh2_mean*mX+cp_cao_mean*(1-mX))*Y+cp_caco3_mean*(1-Y)
         return cp_camix_mean
+    def cp_camix_mean_Ci(self, T1, T2, Y):
+        cp_cao_mean = self.cp0mass_mean("cao", T1, T2)
+        cp_caoh2_mean = self.cp0mass_mean("caoh2", T1, T2)
+        cp_caco3_mean = self.cp0mass_mean("caco3", T1, T2)
+        a=M_caoh2
+        b=M_caoh2/Y-M_caoh2
 
-    def cp_camix(self, T1, X):
+        cp_camix_mean = (cp_caoh2_mean*a+cp_caco3_mean*b)/(a+b)
+        return cp_camix_mean
+    def cp_camix_mean_Co(self, T1, T2, X,Y):
+        cp_cao_mean = self.cp0mass_mean("cao", T1, T2)
+        cp_caoh2_mean = self.cp0mass_mean("caoh2", T1, T2)
+        cp_caco3_mean = self.cp0mass_mean("caco3", T1, T2)
+        a=M_cao
+        b=(M_caoh2/X)-M_caoh2
+        c=(M_caoh2/X/Y)-M_caoh2/X
+        cp_camix_mean = (cp_caoh2_mean*b+cp_cao_mean*a+cp_caco3_mean*c)/(a+b+c)
+        return cp_camix_mean
+    
+
+
+    def cp_camix(self, T1, X,Y=1):
         cp_cao = self.cp0mass("cao", T1)
         cp_caoh2 = self.cp0mass("caoh2", T1)
+        cp_caco3 = self.cp0mass("caco3",T1)
         mX=self.convert_X_to_mX(X)
-        cp_camix = cp_caoh2*mX+cp_cao*(1-mX)
+        cp_camix = (cp_caoh2*mX+cp_cao*(1-mX))*Y+cp_caco3*(1-Y)
         return cp_camix
 
     def convert_X_to_mX(self,X):

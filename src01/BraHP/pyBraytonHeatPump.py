@@ -248,20 +248,21 @@ if __name__ == '__main__':
     parameters["t_isentropic_eff_mc"] = 0.92
     parameters["mechanical_eff"] = 0.98   #机械效率
     parameters["min_temperature_exchange"] = 15
-    parameters["industrial_waste_heat_t"] =300 #℃
+    parameters["industrial_waste_heat_t"] = 300 #℃
     parameters["heat_transfer_loss_eff"] = 0.96
     parameters["t_reaction"] = 525
     #parameters["p_bray_H"] = 20e6
-    parameters["p_bray_M"] = 13e6
+    #parameters["p_bray_M"] = 3e6
     parameters["p_bray_L"] = 7.5e6
     parameters["T_amb"] = 20
     parameters["p_amb"] = 101325
     inputs={}
-    inputs["p_bray_H"] = 19e6
-    inputs["p_bray_M"] = 13e6
+
+    inputs["p_bray_M"] = 12827110.4341202
+    inputs["p_bray_H"] = 19447839.26865841
     inputs["Store_electrical_power"] = 1e6
 
-    BraytonHBs = BraytonHeatPump(parameters)
-    results = BraytonHBs.solve(inputs)
+    BraytonHB = BraytonHeatPump(parameters)
+    results = BraytonHB.solve(inputs)
     print(results)
     print(results["primary_compressor"]["t_compressor_out"],results["secondary_compressor"]["t_compressor_out"],results["evaluation_indicators"]["cop"])

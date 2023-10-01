@@ -15,7 +15,7 @@ class Hen_pinch_analyzer(object):
     def __init__(self, inputs) -> None:
 
         self._X = inputs["cao_conversion"]
-        self._Y = 1-self._X
+        self._Y = inputs["cao_purity"]
         self._materials=["Ca","Gas","Water","Ca","Gas","Water"]
         self._HTCs={"Ca":300,"Gas":600,"Water":2500}
 
@@ -58,7 +58,7 @@ class Hen_pinch_analyzer(object):
         pinch_point_data["TSUPPLY"]["H_CaM"] = self._T_flue_gas_bray_out+5
         pinch_point_data["TTARGET"]["H_CaM"] = self._T_amb
         pinch_point_data["FLOWRATE"]["H_CaM"] = self._m_camix_out_dehy
-        pinch_point_data["CP"]["H_CaM"] = self._m_camix_out_dehy*self._pw.cp_camix_mean(self._T_amb,self._T_flue_gas_bray_out+5,self._Y)
+        pinch_point_data["CP"]["H_CaM"] = self._m_camix_out_dehy*self._pw.cp_camix_mean_Co(self._T_amb,self._T_flue_gas_bray_out+5,self._X,self._Y)
         pinch_point_data["ENERGY"]["H_CaM"] =pinch_point_data["CP"]["H_CaM"]*(self._T_flue_gas_bray_out+5-self._T_amb)
         
 
@@ -103,7 +103,7 @@ class Hen_pinch_analyzer(object):
         pinch_point_data["TSUPPLY"]["C_Caoh2"] = self._T_amb
         pinch_point_data["TTARGET"]["C_Caoh2"] = self._T_solid_in
         pinch_point_data["FLOWRATE"]["C_Caoh2"] = self._m_camix_in_dehy
-        pinch_point_data["CP"]["C_Caoh2"] = self._m_camix_in_dehy*self._pw.cp_camix_mean(self._T_amb,self._T_solid_in,self._X)
+        pinch_point_data["CP"]["C_Caoh2"] = self._m_camix_in_dehy*self._pw.cp_camix_mean_Ci(self._T_amb,self._T_solid_in,self._Y)
         pinch_point_data["ENERGY"]["C_Caoh2"] =pinch_point_data["CP"]["C_Caoh2"]*(self._T_solid_in-self._T_amb)
 
         ## C2: water

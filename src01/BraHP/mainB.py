@@ -1,7 +1,6 @@
 import os 
 import pandas as pd
-from pyCaesProblem import CaesProblem  # 导入自定义问题接口
-from pyHENPinch import Hen_pinch_analyzer
+from pyBProblem import BProblem  # 导入自定义问题接口
 
 import geatpy as ea  # import geatpy
 import numpy as np
@@ -13,9 +12,9 @@ if __name__ == '__main__':
     flue_gas_composition["co2"]=0.1338
     flue_gas_composition["o2"]=0.0384
     flue_gas_composition["n2"]=0.6975
-    p_bray_M = 13e6
+    #p_bray_M = 13e6
     p_bray_L = 7.5e6
-    t_reaction = 525
+    t_reaction = 465
 
     all_plant_results={}
     all_best_variables={}
@@ -28,16 +27,16 @@ if __name__ == '__main__':
         else:
             shutil.rmtree(folder)
             os.mkdir(folder)
-    print(f"solving the case: PM = {p_bray_M}, PL = {p_bray_L}, T = {t_reaction}")
-    case_id=f"PM={p_bray_M}_PL={p_bray_L}_T={t_reaction}"
+    print(f"solving the case:  PL = {p_bray_L}, T = {t_reaction}")
+    case_id=f"PL={p_bray_L}_T={t_reaction}"
     print(f"case_id: {case_id}")
     parameters={}
     parameters["flue_gas_composition"]=flue_gas_composition
-    parameters["obj"] = "energy"
-    problem = CaesProblem(parameters)
+    parameters["obj"] = "cop"
+    problem = BProblem(parameters)
     algorithm = ea.soea_DE_currentToBest_1_bin_templet(problem,
-                                    ea.Population(Encoding='RI', NIND=8),
-                                    MAXGEN=70,  # 最大进化代数。
+                                    ea.Population(Encoding='RI', NIND=15),
+                                    MAXGEN=120,  # 最大进化代数。
                                     logTras=1, #,  # 表示每隔多少代记录一次日志信息，0表示不记录。
                                     trappedValue=1e-6,  # 单目标优化陷入停滞的判断阈值。
                                     maxTrappedCount=100)  # # 进化停滞计数器最大上限值。
@@ -51,6 +50,11 @@ if __name__ == '__main__':
     print(best_vars)
     # copy the trace plot to folder
     shutil.copyfile("./Trace Plot.svg",f"{convergence_plots_folder}/{case_id}.svg")
-    plant_results=problem.solve(best_vars[0,0])
+    input={}
+    input["p_bray_H"]=best_vars[0,0]
+    input["p_bray_M1"]=best_vars[0,1]
+    input["p_bray_M2"]=best_vars[0,2]
+    input["Hydrator_heat"] = 1498957.696586326-30766.434959109065
+    plant_results=problem.solve(input)
     print(f"plant results: {plant_results}")
-    print(plant_results["pinch_analysis_text"])
+    

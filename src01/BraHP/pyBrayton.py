@@ -27,9 +27,9 @@ class Brayton(object):
         self._industrial_waste_heat_t = parameters["industrial_waste_heat_t"]#工业余热温度
         self._heat_transfer_loss_eff = parameters["heat_transfer_loss_eff"]#换热损失
         self._t_reaction_B = parameters["t_reaction_B"]
-        self._p_bray_H_B = parameters["p_bray_H_B"]
-        self._p_bray_M_B = parameters["p_bray_MH_B"]
-        self._p_bray_m_B = parameters["p_bray_ML_B"]
+#        self._p_bray_H_B = parameters["p_bray_H_B"]
+#        self._p_bray_M_B = parameters["p_bray_MH_B"]
+#        self._p_bray_m_B = parameters["p_bray_ML_B"]
         self._p_bray_L_B = parameters["p_bray_L_B"]
         self._p_amb = parameters["p_amb"]
         self._T_amb = parameters["T_amb"]
@@ -37,6 +37,9 @@ class Brayton(object):
         
     def solve(self,inputs):
         results = {}
+        self._p_bray_H_B = inputs["p_bray_H"]
+        self._p_bray_M_B = inputs["p_bray_M1"]
+        self._p_bray_m_B = inputs["p_bray_M2"]
         #Basic input data
         initialvalue = self.initialvalue()
         results["B_initialvalue"] = initialvalue
@@ -106,7 +109,7 @@ class Brayton(object):
                                                flue_gas_name)
         results["heat_recovery"] = heat_recovery
         #Data synthesis
-        heat_in=inputs
+        heat_in=inputs["Hydrator_heat"]
         evaluation_indicators = self.evaluation_indicators(results,heat_in)
         results["evaluation_indicators"] = evaluation_indicators
         return results
@@ -218,8 +221,8 @@ class Brayton(object):
         results["h_cooling_tower_out"] = CP.PropsSI('H', 'T', T_out+273.15, 'P', P, "REFPROP::co2")
         results["s_cooling_tower_out"] = CP.PropsSI('S', 'T', T_out+273.15, 'P', P, "REFPROP::co2")
         if T_in >= 80 :
-            results["hot_r"]=hot_r
-            results["hot_cooling_tower"] = CP.PropsSI('H', 'T', 80+273.15, 'P', P, "REFPROP::co2")-results["h_cooling_tower_out"]+results["hot_r"]/0.96*0.04+self._cooling_tower_1
+            results["hot_r"]=0
+            results["hot_cooling_tower"] = CP.PropsSI('H', 'T', 80+273.15, 'P', P, "REFPROP::co2")-results["h_cooling_tower_out"]+results["hot_r"]/0.96*0.04+self._cooling_tower_1+hot_r
         else:
             results["hot_r"]=0
             results["hot_cooling_tower"] = results["h_cooling_tower_in"]-results["h_cooling_tower_out"]+self._cooling_tower_1
@@ -261,7 +264,7 @@ class Brayton(object):
         eva["e_lost_benchmark"]=results["B_primary_turbine"]["e_lost_turbine"]+results["B_secondary_turbine"]["e_lost_turbine"]+results["B_primary_compressor"]["e_lost_compressor"]+results["B_secondary_compressor"]["e_lost_compressor"]
         eva["lost_benchmark"]=eva["h_lost_benchmark"]+eva["e_lost_benchmark"]
 
-        eva["power_benchmark"]=-results["B_primary_compressor"]["power_compressor"]-results["B_secondary_compressor"]["power_compressor"]+results["B_primary_turbine"]["power_turbine"]+results["B_secondary_turbine"]["power_turbine"]
+        eva["power_benchmark"]=(0-results["B_primary_compressor"]["power_compressor"]-results["B_secondary_compressor"]["power_compressor"])+results["B_primary_turbine"]["power_turbine"]+results["B_secondary_turbine"]["power_turbine"]
         eva["hot_cost_benchmark"]=results["heat_recovery"]["hot_heat_recovery"]
         eva["hot_in_benchmark"]=-results["primary_h_exchanger"]["hot_out_h_exchanger"]-results["secondary_h_exchanger"]["hot_out_h_exchanger"]
         eva["hot_out_benchmark"] = results["cooling_tower"]["hot_r"]
@@ -294,14 +297,19 @@ if __name__ == '__main__':
     parameters["industrial_waste_heat_t"] =300 #℃
     parameters["heat_transfer_loss_eff"] = 0.96
     parameters["t_reaction_B"] = 465
-    parameters["p_bray_H_B"] = 30e6
-    parameters["p_bray_MH_B"] = 16217752.142109105
-    parameters["p_bray_ML_B"] = 16217752.142109105
+#    parameters["p_bray_H_B"] = 30e6
+#    parameters["p_bray_MH_B"] = 16217752.142109105
+#    parameters["p_bray_ML_B"] = 16217752.142109105
     parameters["p_bray_L_B"] = 7.5e6
     parameters["T_amb"] = 20
     parameters["p_amb"] = 101325
 
     BraytonHBs = Brayton(parameters)
-    Hydrator_heat=	1498957.696586326-30766.434959109065
-    results = BraytonHBs.solve(Hydrator_heat)
+
+    inputs={}
+    inputs["Hydrator_heat"] = 1498957.696586326-30766.434959109065
+    inputs["p_bray_H"] = 30e6
+    inputs["p_bray_M1"] = 13e6
+    inputs["p_bray_M2"] = 13e6
+    results = BraytonHBs.solve(inputs)
     print(results)

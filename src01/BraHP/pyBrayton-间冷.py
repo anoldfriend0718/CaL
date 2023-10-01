@@ -28,8 +28,7 @@ class Brayton(object):
         self._heat_transfer_loss_eff = parameters["heat_transfer_loss_eff"]#换热损失
         self._t_reaction_B = parameters["t_reaction_B"]
         self._p_bray_H_B = parameters["p_bray_H_B"]
-        self._p_bray_M_B = parameters["p_bray_MH_B"]
-        self._p_bray_m_B = parameters["p_bray_ML_B"]
+        self._p_bray_M_B = parameters["p_bray_M_B"]
         self._p_bray_L_B = parameters["p_bray_L_B"]
         self._p_amb = parameters["p_amb"]
         self._T_amb = parameters["T_amb"]
@@ -73,20 +72,35 @@ class Brayton(object):
         #primary compressors
         primary_compressor = self.compressor(self._T_L,
                                              self._p_bray_L_B,
-                                             self._p_bray_m_B)
+                                             11e6)
         results["B_primary_compressor"] = primary_compressor
-        #间冷
+        #Secondary compressors
         t_pri_com_out=results["B_primary_compressor"]["t_compressor_out"]
         h1 = CP.PropsSI('H', 'T', t_pri_com_out+273.15, 'P', 11e6, "REFPROP::co2")
         h2 = CP.PropsSI('H', 'T', self._T_L+273.15, 'P', 11e6, "REFPROP::co2")
         self._cooling_tower_1 = h1-h2
-        #Secondary compressors
         secondary_compressor = self.compressor(self._T_L,
-                                             self._p_bray_m_B,
-                                             self._p_bray_H_B)
+                                             11e6,
+                                             16e6)
         results["B_secondary_compressor"] = secondary_compressor
+        t_sec_com_out=results["B_secondary_compressor"]["t_compressor_out"]
+        h3 = CP.PropsSI('H', 'T', t_sec_com_out+273.15, 'P', 16e6, "REFPROP::co2")
+        h4 = CP.PropsSI('H', 'T', self._T_L+273.15, 'P', 16e6, "REFPROP::co2")
+        self._cooling_tower_2 = h3-h4
+        san_compressor = self.compressor(self._T_L,
+                                             16e6,
+                                             23e6)
+        results["B_san_compressor"] = san_compressor
+        t_san_com_out=results["B_san_compressor"]["t_compressor_out"]
+        h5 = CP.PropsSI('H', 'T', t_san_com_out+273.15, 'P', 23e6, "REFPROP::co2")
+        h6 = CP.PropsSI('H', 'T', self._T_L+273.15, 'P', 23e6, "REFPROP::co2")
+        self._cooling_tower_3 = h5-h6
+        si_compressor = self.compressor(self._T_L,
+                                             23e6,
+                                             self._p_bray_H_B)
+        results["B_si_compressor"] = si_compressor
         #Low heat_recovery 
-        t_l_out=results["B_secondary_compressor"]["t_compressor_out"]+self._min_temperature_exchange
+        t_l_out=results["B_si_compressor"]["t_compressor_out"]+self._min_temperature_exchange
         Low_h_recovery=self.h_recovery(self._industrial_waste_heat_t,
                                                      t_l_out,
                                                      self._p_bray_L_B,
@@ -222,7 +236,7 @@ class Brayton(object):
             results["hot_cooling_tower"] = CP.PropsSI('H', 'T', 80+273.15, 'P', P, "REFPROP::co2")-results["h_cooling_tower_out"]+results["hot_r"]/0.96*0.04+self._cooling_tower_1
         else:
             results["hot_r"]=0
-            results["hot_cooling_tower"] = results["h_cooling_tower_in"]-results["h_cooling_tower_out"]+self._cooling_tower_1
+            results["hot_cooling_tower"] = results["h_cooling_tower_in"]-results["h_cooling_tower_out"]+self._cooling_tower_1+self._cooling_tower_2+self._cooling_tower_3
         return results
     def heat_recovery(self, T_in,P,flue_gas_name):
         t_heat_recovery_in = T_in
@@ -258,10 +272,10 @@ class Brayton(object):
         eva={}
         eva["hydrator_lost"] = H_in*0.05
         eva["h_lost_benchmark"]=results["High_h_recovery"]["h_lost_recovery"]+results["Low_h_recovery"]["h_lost_recovery"]+results["heat_recovery"]["h_lost_heat_recovery"]
-        eva["e_lost_benchmark"]=results["B_primary_turbine"]["e_lost_turbine"]+results["B_secondary_turbine"]["e_lost_turbine"]+results["B_primary_compressor"]["e_lost_compressor"]+results["B_secondary_compressor"]["e_lost_compressor"]
+        eva["e_lost_benchmark"]=results["B_primary_turbine"]["e_lost_turbine"]+results["B_secondary_turbine"]["e_lost_turbine"]+results["B_primary_compressor"]["e_lost_compressor"]+results["B_secondary_compressor"]["e_lost_compressor"]+results["B_san_compressor"]["e_lost_compressor"]+results["B_si_compressor"]["e_lost_compressor"]
         eva["lost_benchmark"]=eva["h_lost_benchmark"]+eva["e_lost_benchmark"]
 
-        eva["power_benchmark"]=-results["B_primary_compressor"]["power_compressor"]-results["B_secondary_compressor"]["power_compressor"]+results["B_primary_turbine"]["power_turbine"]+results["B_secondary_turbine"]["power_turbine"]
+        eva["power_benchmark"]=-results["B_primary_compressor"]["power_compressor"]-results["B_san_compressor"]["power_compressor"]-results["B_si_compressor"]["power_compressor"]-results["B_secondary_compressor"]["power_compressor"]+results["B_primary_turbine"]["power_turbine"]+results["B_secondary_turbine"]["power_turbine"]
         eva["hot_cost_benchmark"]=results["heat_recovery"]["hot_heat_recovery"]
         eva["hot_in_benchmark"]=-results["primary_h_exchanger"]["hot_out_h_exchanger"]-results["secondary_h_exchanger"]["hot_out_h_exchanger"]
         eva["hot_out_benchmark"] = results["cooling_tower"]["hot_r"]
@@ -295,8 +309,7 @@ if __name__ == '__main__':
     parameters["heat_transfer_loss_eff"] = 0.96
     parameters["t_reaction_B"] = 465
     parameters["p_bray_H_B"] = 30e6
-    parameters["p_bray_MH_B"] = 16217752.142109105
-    parameters["p_bray_ML_B"] = 16217752.142109105
+    parameters["p_bray_M_B"] = 16217752.142109105
     parameters["p_bray_L_B"] = 7.5e6
     parameters["T_amb"] = 20
     parameters["p_amb"] = 101325
