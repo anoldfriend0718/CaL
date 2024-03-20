@@ -32,7 +32,7 @@ if __name__ == '__main__':
     print(f"case_id: {case_id}")
     parameters={}
     parameters["flue_gas_composition"]=flue_gas_composition
-    parameters["obj"] = "energy"
+    parameters["obj"] = "cop"
     problem = BhpProblem(parameters)
     algorithm = ea.soea_DE_currentToBest_1_bin_templet(problem,
                                     ea.Population(Encoding='RI', NIND=15),

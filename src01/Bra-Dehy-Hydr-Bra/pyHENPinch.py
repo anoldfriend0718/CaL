@@ -5,6 +5,7 @@ CaLRepo = '/home/zyq0416/workspace/CaL'
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
 
+import math
 from pyPinch import PyPinch
 import pandas as pd
 import CoolProp.CoolProp as CP
@@ -16,7 +17,7 @@ class Hen_pinch_analyzer(object):
 
         self._X = inputs["cao_conversion"]
         self._Y = inputs["cao_purity"]
-        self._materials=["Ca","Gas","Water","Ca","Gas","Water"]
+        self._materials=["Ca","Gas","Gas","Water","Gas","Ca","Water"]
         self._HTCs={"Ca":300,"Gas":600,"Water":2500}
 
         self._m_camix_out_dehy = inputs["m_camix_out"]
@@ -28,9 +29,10 @@ class Hen_pinch_analyzer(object):
         self._T_dehy = inputs["T_dehy"]
         self._p_amb = inputs["p_amb"]
         self._T_amb = inputs["T_amb"]
-        self._T_flue_gas_bray_out = inputs["T_flue_gas_bray_out"]  
+ 
+        self._T_flue_gas_bray_out =inputs["T_flue_gas_bray_out"]
+        self._T_flue_gas_dew = inputs["T_flue_gas_dew"] 
         self._p_flue_gas_bray_out = inputs["p_flue_gas_bray_out"]
-        self._T_flue_gas_dew = inputs["T_flue_gas_dew"]
         self._T_solid_in = inputs["T_solid_in"] #非定值
         self._T_water_supply_in= inputs["T_water_supply_in"]
         self._T_water_reactor_in = inputs["T_water_reactor_in"]
@@ -55,24 +57,27 @@ class Hen_pinch_analyzer(object):
         pinch_point_data["CP"] = {}
 
         ## H1: Camix out: CaO
-        pinch_point_data["TSUPPLY"]["H_CaM"] = self._T_flue_gas_bray_out+5
+        
+        pinch_point_data["TSUPPLY"]["H_CaM"] = inputs["T_dehy"]
         pinch_point_data["TTARGET"]["H_CaM"] = self._T_amb
         pinch_point_data["FLOWRATE"]["H_CaM"] = self._m_camix_out_dehy
-        pinch_point_data["CP"]["H_CaM"] = self._m_camix_out_dehy*self._pw.cp_camix_mean_Co(self._T_amb,self._T_flue_gas_bray_out+5,self._X,self._Y)
-        pinch_point_data["ENERGY"]["H_CaM"] =pinch_point_data["CP"]["H_CaM"]*(self._T_flue_gas_bray_out+5-self._T_amb)
+        pinch_point_data["CP"]["H_CaM"] = self._m_camix_out_dehy*self._pw.cp_camix_mean_Co(
+            self._T_amb,inputs["T_dehy"],self._X,self._Y)
+        pinch_point_data["ENERGY"]["H_CaM"] =pinch_point_data["CP"]["H_CaM"]*(
+            inputs["T_dehy"]-self._T_amb)
         
 
         # H2: Gas out:Steam
-        pinch_point_data["TSUPPLY"]["H_Steam"] = self._T_flue_gas_bray_out
+        pinch_point_data["TSUPPLY"]["H_Steam"] = inputs["T_dehy"]
         pinch_point_data["TTARGET"]["H_Steam"] = self._t_lsteam_in
         pinch_point_data["FLOWRATE"]["H_Steam"] = self._m_steam
         pinch_point_data["ENERGY"]["H_Steam"] = self._m_steam * \
-            (CP.PropsSI('H', 'T', self._T_flue_gas_bray_out+273.15,
+            (CP.PropsSI('H', 'T', inputs["T_dehy"]+273.15,
                         'P', self._p_dehy_o, "water") -
              CP.PropsSI('H', 'T', self._t_lsteam_in + 273.15,
                         'P', self._p_steam_out, "water"))
         pinch_point_data["CP"]["H_Steam"] = pinch_point_data["ENERGY"]["H_Steam"] / \
-            (self._T_flue_gas_bray_out-self._t_lsteam_in)
+            (inputs["T_dehy"]-self._t_lsteam_in)
 
         # H3: flue gas
         pinch_point_data["TSUPPLY"]["C_flue_gas"] = self._T_flue_gas_bray_out  #
@@ -84,7 +89,10 @@ class Hen_pinch_analyzer(object):
                         'P', self._p_amb, flue_gas_name) -
              CP.PropsSI('H', 'T', self._T_flue_gas_dew+273.15,
                         'P', self._p_amb, flue_gas_name))
-        pinch_point_data["CP"]["C_flue_gas"] = pinch_point_data["ENERGY"]["C_flue_gas"] / \
+        if self._T_flue_gas_bray_out == self._T_flue_gas_dew:
+            pinch_point_data["CP"]["C_flue_gas"] =0
+        else:
+            pinch_point_data["CP"]["C_flue_gas"] = pinch_point_data["ENERGY"]["C_flue_gas"] / \
             (self._T_flue_gas_bray_out-self._T_flue_gas_dew)
         
         # H4: water after phase change
@@ -98,12 +106,26 @@ class Hen_pinch_analyzer(object):
                         'P', self._p_steam_out, "water"))
         pinch_point_data["CP"]["PC_water"] = pinch_point_data["ENERGY"]["PC_water"] / \
             (self._t_lsteam_out-self._T_amb)
+        
+        # H5: water        phase change
+        pinch_point_data["TSUPPLY"]["PC_w"] = self._t_lsteam_in
+        pinch_point_data["TTARGET"]["PC_w"] = self._t_lsteam_out
+        pinch_point_data["FLOWRATE"]["PC_w"] = self._m_steam
+        pinch_point_data["ENERGY"]["PC_w"] = self._m_steam * \
+            (CP.PropsSI('H', 'T', self._t_lsteam_in+273.15,
+                        'P', self._p_dehy_o, "water") -
+             CP.PropsSI('H', 'T', self._t_lsteam_out+273.15,
+                        'P', self._p_steam_out, "water"))
+        pinch_point_data["CP"]["PC_w"] = pinch_point_data["ENERGY"]["PC_w"] / \
+            (self._t_lsteam_in-self._t_lsteam_out)
 
         ## C1: Camix out: Ca(OH)2 
         pinch_point_data["TSUPPLY"]["C_Caoh2"] = self._T_amb
         pinch_point_data["TTARGET"]["C_Caoh2"] = self._T_solid_in
         pinch_point_data["FLOWRATE"]["C_Caoh2"] = self._m_camix_in_dehy
-        pinch_point_data["CP"]["C_Caoh2"] = self._m_camix_in_dehy*self._pw.cp_camix_mean_Ci(self._T_amb,self._T_solid_in,self._Y)
+        pinch_point_data["CP"]["C_Caoh2"] = (self._m_camix_in_dehy*
+                                             self._pw.cp_camix_mean_Ci(
+                                                self._T_amb,self._T_solid_in,self._Y))
         pinch_point_data["ENERGY"]["C_Caoh2"] =pinch_point_data["CP"]["C_Caoh2"]*(self._T_solid_in-self._T_amb)
 
         ## C2: water
@@ -119,6 +141,43 @@ class Hen_pinch_analyzer(object):
             (self._T_water_reactor_in-self._T_water_supply_in)
        
         self._pinch_point_data = pinch_point_data
+
+    def exergy(self):
+        exergy={}
+        exergy["H_CaM"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["H_CaM"],
+                                             self._pinch_point_data["TTARGET"]["H_CaM"],
+                                             self._pinch_point_data["ENERGY"]["H_CaM"])
+        exergy["H_Steam"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["H_Steam"],
+                                             self._pinch_point_data["TTARGET"]["H_Steam"],
+                                             self._pinch_point_data["ENERGY"]["H_Steam"])
+        exergy["C_flue_gas"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["C_flue_gas"],
+                                             self._pinch_point_data["TTARGET"]["C_flue_gas"],
+                                             self._pinch_point_data["ENERGY"]["C_flue_gas"])
+        exergy["PC_water"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["PC_water"],
+                                             self._pinch_point_data["TTARGET"]["PC_water"],
+                                             self._pinch_point_data["ENERGY"]["PC_water"])
+        exergy["PC_w"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["PC_w"],
+                                             self._pinch_point_data["TTARGET"]["PC_w"],
+                                             self._pinch_point_data["ENERGY"]["PC_w"])
+        exergy["C_Caoh2"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["C_Caoh2"],
+                                             self._pinch_point_data["TTARGET"]["C_Caoh2"],
+                                             self._pinch_point_data["ENERGY"]["C_Caoh2"])
+        exergy["C_water"]=self.ex_calculations(self._pinch_point_data["TSUPPLY"]["C_water"],
+                                             self._pinch_point_data["TTARGET"]["C_water"],
+                                             self._pinch_point_data["ENERGY"]["C_water"])
+        exergy["hot_in"]=(exergy["H_CaM"]+exergy["H_Steam"]+exergy["C_flue_gas"]
+                          +exergy["PC_water"]+exergy["PC_w"])/0.96
+        exergy["cold_add"]=exergy["C_Caoh2"]+exergy["C_water"]
+        exergy["lost"]=exergy["hot_in"]-exergy["cold_add"]
+        return exergy,self._pinch_point_data
+
+
+    def ex_calculations(self,b1,b2,Q):
+        a1=b1+273.15
+        a2=b2+273.15
+        gcpw=(a1-a2-293.15*math.log(a1/a2))/(a1-a2)
+        exergy = Q*gcpw
+        return exergy
 
     def write_pyPinch_data_csv(self, path):
         data = {}

@@ -26,18 +26,22 @@ class Brayton(object):
         self._min_temperature_exchange = parameters["min_temperature_exchange"]#最小换热温差
         self._industrial_waste_heat_t = parameters["industrial_waste_heat_t"]#工业余热温度
         self._heat_transfer_loss_eff = parameters["heat_transfer_loss_eff"]#换热损失
-        self._t_reaction_B = parameters["t_reaction_B"]
-        self._p_bray_H_B = parameters["p_bray_H_B"]
-        self._p_bray_M_B = parameters["p_bray_MH_B"]
-        self._p_bray_m_B = parameters["p_bray_ML_B"]
         self._p_bray_L_B = parameters["p_bray_L_B"]
         self._p_amb = parameters["p_amb"]
-        self._T_amb = parameters["T_amb"]
+        self._T_amb = parameters["t_amb"]
         self._T_L = 32
+        self._hydrator_eff = parameters["hydrator_eff"]
         
-    def solve(self,inputs):
+    def solve(self,a,inputs):
+        self._p_bray_H_B = inputs["p_bray_H_B"] 
+        self._p_bray_M_B = inputs["p_bray_MH_B"] 
+        self._p_bray_m_B = inputs["p_bray_ML_B"] 
+        self._p_reaction = inputs["p_Hydr"]
+        self._Hydr_ot = inputs["Hydr_overheating_temperature"] = 40
         results = {}
         #Basic input data
+        t_equilibrium = self.equilibrium()
+        self._t_reaction_B = t_equilibrium-self._Hydr_ot
         initialvalue = self.initialvalue()
         results["B_initialvalue"] = initialvalue
         #The primary Turbine is the starting point
@@ -58,14 +62,14 @@ class Brayton(object):
         results["B_secondary_turbine"] = secondary_turbine
         #High heat_recovery 
         t_h_re_in=results["B_secondary_turbine"]["t_turbine_out"]
-        High_h_recovery=self.h_recovery(t_h_re_in,
+        High_h_recovery=self.h_recovery_h(t_h_re_in,
                                                      self._industrial_waste_heat_t,
                                                      self._p_bray_L_B,
                                                      self._p_bray_H_B)
         results["High_h_recovery"] = High_h_recovery
 
         #primary heat exchanger
-        t_p_in=results["High_h_recovery"]["t_h_recovery_hh_out"]
+        t_p_in=results["High_h_recovery"]["t_h_recovery_lh_out"]
         primary_h_exchanger=self.h_exchanger(t_p_in,
                                                      self._t_reaction_B-self._min_temperature_exchange,
                                                      self._p_bray_H_B)
@@ -77,39 +81,45 @@ class Brayton(object):
         results["B_primary_compressor"] = primary_compressor
         #间冷
         t_pri_com_out=results["B_primary_compressor"]["t_compressor_out"]
-        h1 = CP.PropsSI('H', 'T', t_pri_com_out+273.15, 'P', 11e6, "REFPROP::co2")
-        h2 = CP.PropsSI('H', 'T', self._T_L+273.15, 'P', 11e6, "REFPROP::co2")
-        self._cooling_tower_1 = h1-h2
+        intercooler = self.cooling_tower(t_pri_com_out,
+                                           self._T_L,
+                                           self._p_bray_m_B)
+        results["intercooler"] = intercooler
         #Secondary compressors
         secondary_compressor = self.compressor(self._T_L,
                                              self._p_bray_m_B,
                                              self._p_bray_H_B)
         results["B_secondary_compressor"] = secondary_compressor
         #Low heat_recovery 
-        t_l_out=results["B_secondary_compressor"]["t_compressor_out"]+self._min_temperature_exchange
-        Low_h_recovery=self.h_recovery(self._industrial_waste_heat_t,
-                                                     t_l_out,
+        t_h_out=results["B_secondary_compressor"]["t_compressor_out"]+self._min_temperature_exchange
+        Low_h_recovery=self.h_recovery_h(self._industrial_waste_heat_t,
+                                                     t_h_out,
                                                      self._p_bray_L_B,
                                                      self._p_bray_H_B)
         results["Low_h_recovery"] = Low_h_recovery
         #Cooling towers
-        cooling_tower = self.cooling_tower(t_l_out,
+        cooling_tower = self.cooling_tower(t_h_out,
                                            self._T_L,
                                            self._p_bray_L_B)
         results["cooling_tower"] = cooling_tower
 
         #Industrial waste heat heating part
         flue_gas_name = self._pw.get_flue_gas_refprop_name()
-        t_p_rec_in=results["Low_h_recovery"]["t_h_recovery_hh_out"]
+        t_p_rec_in=results["Low_h_recovery"]["t_h_recovery_lh_out"]
         heat_recovery = self.heat_recovery(t_p_rec_in,
                                                self._p_bray_H_B,
                                                flue_gas_name)
         results["heat_recovery"] = heat_recovery
         #Data synthesis
-        heat_in=inputs
+        heat_in=a
         evaluation_indicators = self.evaluation_indicators(results,heat_in)
         results["evaluation_indicators"] = evaluation_indicators
         return results
+    
+    def equilibrium(self):
+        p = self._p_reaction
+        t = (-12845/((math.log(p/1e5))-16.508))-273.15
+        return t
     
     def initialvalue(self):
         results = {}
@@ -136,16 +146,20 @@ class Brayton(object):
         t_compressor_out = CP.PropsSI('T', 'H', h_compressor_out, 'P', p_compressor_out, "REFPROP::co2")-273.15
         s_compressor_out = CP.PropsSI('S', 'H', h_compressor_out, 'P', p_compressor_out, "REFPROP::co2")
         results = {}
-        #results["t_compressor_in"] = t_compressor_in 
-        #results["p_compressor_in"] = p_compressor_in
-        #results["h_compressor_in"] = h_compressor_in
-        #results["s_compressor_in"] = s_compressor_in
+        results["t_compressor_in"] = t_compressor_in 
+        results["p_compressor_in"] = p_compressor_in
+        results["h_compressor_in"] = h_compressor_in
+        results["s_compressor_in"] = s_compressor_in
         results["t_compressor_out"] = t_compressor_out 
         results["p_compressor_out"] = p_compressor_out
         results["h_compressor_out"] = h_compressor_out
         results["s_compressor_out"] = s_compressor_out
         results["power_compressor"] = power_compressor
         results["e_lost_compressor"] = e_lost_compressor
+        results["exergy_lost_compressor"] = (self._T_amb+273.15)*(s_compressor_out-s_compressor_in)
+        results["ex_co2"]={}
+        results["ex_co2"]["in"]=self.E(t_compressor_in,p_compressor_in)
+        results["ex_co2"]["out"]=self.E(t_compressor_out,p_compressor_out)
         return results
     def turbine(self, T_in,P_in,P_out):
         t_turbine_in = T_in
@@ -167,6 +181,10 @@ class Brayton(object):
         results["s_turbine_out"] = s_turbine_out
         results["power_turbine"] = -power_turbine
         results["e_lost_turbine"] = -e_lost_turbine
+        results["exergy_lost_turbine"] = (self._T_amb+273.15)*(s_turbine_out-s_turbine_in)
+        results["ex_co2"]={}
+        results["ex_co2"]["in"]=self.E(t_turbine_in,p_turbine_in)
+        results["ex_co2"]["out"]=self.E(t_turbine_out,p_turbine_out)
         return results
     def h_exchanger(self,T_in,T_out,P):
         t_h_exchanger_in=T_in
@@ -179,30 +197,73 @@ class Brayton(object):
         results["p_h_exchanger_out"] = P
         results["h_h_exchanger_out"] = h_h_exchanger_out
         results["s_h_exchanger_out"] = CP.PropsSI('S', 'T', t_h_exchanger_out+273.15, 'P', P, "REFPROP::co2")
-        results["hot_out_h_exchanger"] = hot_out_h_exchanger
+        results["hot_in_h_exchanger"] = -hot_out_h_exchanger
+        a1=T_in+273.15
+        a2=T_out+273.15
+        results["Process_taste"]=(a1-a2-293.15*math.log(a1/a2))/(a1-a2)
+        return results
+    def h_recovery_h(self,T_in,T_out,Pl,Ph):
+        t_h_exchangerm_hl_in=T_in#低压入口温度
+        t_h_exchangerm_hl_out = T_out#低压出口温度
+        t_h_exchangerm_lh_in=T_out-self._min_temperature_exchange#高压入口温度
+
+        h_h_exchangerm_hl_in =CP.PropsSI('H', 'T', t_h_exchangerm_hl_in+273.15,  'P', Pl, "REFPROP::co2")
+        s_h_exchangerm_hl_in =CP.PropsSI('S', 'T', t_h_exchangerm_hl_in+273.15,  'P', Pl, "REFPROP::co2")
+        h_h_exchangerm_hl_out=CP.PropsSI('H', 'T', t_h_exchangerm_hl_out+273.15,  'P', Pl, "REFPROP::co2")
+        s_h_exchangerm_hl_out=CP.PropsSI('S', 'T', t_h_exchangerm_hl_out+273.15, 'P', Pl, "REFPROP::co2")
+        hot_hl_exchange=h_h_exchangerm_hl_in-h_h_exchangerm_hl_out
+        hot_lh_exchange= hot_hl_exchange*self._heat_transfer_loss_eff
+
+        h_h_exchangerm_lh_in =CP.PropsSI('H', 'T', t_h_exchangerm_lh_in+273.15,  'P', Ph, "REFPROP::co2")
+        s_h_exchangerm_lh_in =CP.PropsSI('S', 'T', t_h_exchangerm_lh_in+273.15,  'P', Ph, "REFPROP::co2")
+        h_h_exchangerm_lh_out=h_h_exchangerm_lh_in+hot_lh_exchange
+        t_h_exchangerm_lh_out=CP.PropsSI('T', 'H', h_h_exchangerm_lh_out,  'P', Ph, "REFPROP::co2")-273.15
+        s_h_exchangerm_lh_out=CP.PropsSI('S', 'T', t_h_exchangerm_lh_out+273.15, 'P', Ph, "REFPROP::co2")
+        results = {}
+        results["t_h_recovery_hl_out"] = t_h_exchangerm_hl_out 
+        results["p_h_recovery_hl_out"] = self._p_bray_L_B
+        results["h_h_recovery_hl_out"] = h_h_exchangerm_hl_out
+        results["s_h_recovery_hl_out"] = s_h_exchangerm_hl_out
+        results["t_h_recovery_lh_out"] = t_h_exchangerm_lh_out
+        results["p_h_recovery_lh_out"] = self._p_bray_H_B
+        results["h_h_recovery_lh_out"] = h_h_exchangerm_lh_out
+        results["s_h_recovery_lh_out"] = s_h_exchangerm_lh_out
+        results["h_lost_recovery"] = hot_hl_exchange-hot_lh_exchange
+        results["hot_exergy"]=h_h_exchangerm_hl_in-h_h_exchangerm_hl_out+(self._T_amb+273.15)*(
+            s_h_exchangerm_hl_out-s_h_exchangerm_hl_in)
+        results["cold_exergy"]=h_h_exchangerm_lh_out-h_h_exchangerm_lh_in+(self._T_amb+273.15)*(
+            s_h_exchangerm_lh_in-s_h_exchangerm_lh_out)
+        results["lost_exergy"] = results["hot_exergy"]-results["cold_exergy"]
+        results["ex_co2"]={}
+        results["ex_co2"]["h_in"]=self.E(T_in,Pl)
+        results["ex_co2"]["h_out"]=self.E(T_out,Pl)
+        results["ex_co2"]["l_in"]=self.E(t_h_exchangerm_lh_in,Ph)
+        results["ex_co2"]["l_out"]=self.E(t_h_exchangerm_lh_out,Ph)
         return results
     def h_recovery(self,T_in,T_out,Pl,Ph):
-        t_h_exchangerm_hh_in=T_out-self._min_temperature_exchange
-        t_h_exchangerm_ll_in=T_in
-        t_h_exchangerm_ll_out=T_out
-        h_h_exchangerm_ll_in =CP.PropsSI('H', 'T', t_h_exchangerm_ll_in+273.15,  'P', Pl, "REFPROP::co2")
-        h_h_exchangerm_ll_out=CP.PropsSI('H', 'T', t_h_exchangerm_ll_out+273.15, 'P', Pl, "REFPROP::co2")
-        s_h_exchangerm_ll_in =CP.PropsSI('S', 'T', t_h_exchangerm_ll_in+273.15,  'P', Pl, "REFPROP::co2")
-        hot_ll_exchange=h_h_exchangerm_ll_in-h_h_exchangerm_ll_out
-        hot_hh_exchange= hot_ll_exchange*self._heat_transfer_loss_eff
+        t_h_exchangerm_hh_in=T_in
+        t_h_exchangerm_hh_out = T_out
+        t_h_exchangerm_ll_in=T_out-self._min_temperature_exchange
+
         h_h_exchangerm_hh_in =CP.PropsSI('H', 'T', t_h_exchangerm_hh_in+273.15,  'P', Ph, "REFPROP::co2")
-        h_h_exchangerm_hh_out=h_h_exchangerm_hh_in+hot_hh_exchange
-        t_h_exchangerm_hh_out=CP.PropsSI('T', 'H', h_h_exchangerm_hh_out,  'P', Ph, "REFPROP::co2")-273.15
+        h_h_exchangerm_hh_out=CP.PropsSI('H', 'T', t_h_exchangerm_hh_out+273.15,  'P', Ph, "REFPROP::co2")
         s_h_exchangerm_hh_out=CP.PropsSI('S', 'T', t_h_exchangerm_hh_out+273.15, 'P', Ph, "REFPROP::co2")
+        hot_hh_exchange=h_h_exchangerm_hh_in-h_h_exchangerm_hh_out
+        hot_ll_exchange= hot_hh_exchange*self._heat_transfer_loss_eff
+
+        h_h_exchangerm_ll_in =CP.PropsSI('H', 'T', t_h_exchangerm_ll_in+273.15,  'P', Pl, "REFPROP::co2")
+        h_h_exchangerm_ll_out=h_h_exchangerm_ll_in+hot_ll_exchange
+        t_h_exchangerm_ll_out=CP.PropsSI('T', 'H', h_h_exchangerm_ll_out,  'P', Pl, "REFPROP::co2")-273.15
+        s_h_exchangerm_ll_out=CP.PropsSI('S', 'T', t_h_exchangerm_ll_out+273.15, 'P', Pl, "REFPROP::co2")
         results = {}
         results["t_h_recovery_hh_out"] = t_h_exchangerm_hh_out 
         results["p_h_recovery_hh_out"] = self._p_bray_H_B
         results["h_h_recovery_hh_out"] = h_h_exchangerm_hh_out
         results["s_h_recovery_hh_out"] = s_h_exchangerm_hh_out
-        results["t_h_recovery_ll_in"] = t_h_exchangerm_ll_in 
-        results["p_h_recovery_ll_in"] = self._p_bray_L_B
-        results["h_h_recovery_ll_in"] = h_h_exchangerm_ll_in
-        results["s_h_recovery_ll_in"] = s_h_exchangerm_ll_in
+        results["t_h_recovery_ll_out"] = t_h_exchangerm_ll_out
+        results["p_h_recovery_ll_out"] = self._p_bray_L_B
+        results["h_h_recovery_ll_out"] = h_h_exchangerm_ll_out
+        results["s_h_recovery_ll_out"] = s_h_exchangerm_ll_out
         results["h_lost_recovery"] = hot_ll_exchange-hot_hh_exchange
         return results
     
@@ -212,34 +273,40 @@ class Brayton(object):
         results["p_cooling_tower_in"] = P
         results["h_cooling_tower_in"] = CP.PropsSI('H', 'T', T_in+273.15, 'P', P, "REFPROP::co2")
         results["s_cooling_tower_in"] = CP.PropsSI('S', 'T', T_in+273.15, 'P', P, "REFPROP::co2")
-        hot_r=(results["h_cooling_tower_in"]-CP.PropsSI('H', 'T', 80+273.15, 'P', P, "REFPROP::co2"))*0.96
         results["t_cooling_tower_out"] = T_out
         results["p_cooling_tower_out"] = P
         results["h_cooling_tower_out"] = CP.PropsSI('H', 'T', T_out+273.15, 'P', P, "REFPROP::co2")
         results["s_cooling_tower_out"] = CP.PropsSI('S', 'T', T_out+273.15, 'P', P, "REFPROP::co2")
-        if T_in >= 80 :
-            results["hot_r"]=hot_r
-            results["hot_cooling_tower"] = CP.PropsSI('H', 'T', 80+273.15, 'P', P, "REFPROP::co2")-results["h_cooling_tower_out"]+results["hot_r"]/0.96*0.04+self._cooling_tower_1
-        else:
-            results["hot_r"]=0
-            results["hot_cooling_tower"] = results["h_cooling_tower_in"]-results["h_cooling_tower_out"]+self._cooling_tower_1
+        results["hot_cooling_tower"] = (results["h_cooling_tower_in"]
+                                        -results["h_cooling_tower_out"])
+        
+        results["exergy_lost"] =((results["h_cooling_tower_in"]-results["h_cooling_tower_out"])
+                                 -(self._T_amb+273.15)*(results["s_cooling_tower_in"]-
+                                                        results["s_cooling_tower_out"]))
+        results["ex_co2"]={}
+        results["ex_co2"]["in"]=self.E(T_in,P)
+        results["ex_co2"]["out"]=self.E(T_out,P)
         return results
     def heat_recovery(self, T_in,P,flue_gas_name):
         t_heat_recovery_in = T_in
         h_heat_recovery_in = CP.PropsSI('H', 'T', t_heat_recovery_in+273.15, 'P', P , "REFPROP::co2")
+        s_heat_recovery_in = CP.PropsSI('S', 'T', t_heat_recovery_in+273.15, 'P', P , "REFPROP::co2")
         t_heat_recovery_out = self._industrial_waste_heat_t-self._min_temperature_exchange
         h_heat_recovery_out = CP.PropsSI('H', 'T', t_heat_recovery_out+273.15, 'P', P , "REFPROP::co2")
+        s_heat_recovery_out = CP.PropsSI('S', 'T', t_heat_recovery_out+273.15, 'P', P , "REFPROP::co2")
         h_heat_recovery_supply = h_heat_recovery_out-h_heat_recovery_in
         h_heat_recovery_receive=h_heat_recovery_supply/self._heat_transfer_loss_eff
         h_lost_heat_recovery1=h_heat_recovery_receive-h_heat_recovery_supply
 
         fluid=flue_gas_name
         t_flue_gas_in = self._industrial_waste_heat_t
-        t_flue_gas_out = T_in+self._min_temperature_exchange
+        if T_in+self._min_temperature_exchange>=160 :
+            t_flue_gas_out = T_in+self._min_temperature_exchange
+        else :
+            t_flue_gas_out = 160
         h_flue_gas_in = CP.PropsSI('H', 'T', t_flue_gas_in+273.15, 'P', self._p_amb , fluid)
         h_flue_gas_out = CP.PropsSI('H', 'T', t_flue_gas_out+273.15, 'P', self._p_amb , fluid)
-        h_heat_recovery_in = (h_heat_recovery_supply/0.985)/0.975
-        n=h_heat_recovery_in/(h_flue_gas_in-h_flue_gas_out)
+        n=h_heat_recovery_receive/(h_flue_gas_in-h_flue_gas_out)
 
         results = {}
         results["t_flue_gas_in"] = t_flue_gas_in
@@ -252,29 +319,90 @@ class Brayton(object):
         results["s_heat_recovery_out"] = CP.PropsSI('S', 'T', t_heat_recovery_out+273.15, 'P', P, "REFPROP::co2")
         results["hot_heat_recovery"] = h_heat_recovery_receive
         results["h_lost_heat_recovery"] = h_lost_heat_recovery1
+        results["hot_exergy"] = self.ex_calculations(t_flue_gas_in+273.15,
+                                                     t_flue_gas_out+273.15,
+                                                     h_heat_recovery_receive) 
+        results["cold_exergy"]=h_heat_recovery_out-h_heat_recovery_in+(self._T_amb+273.15)*(
+            s_heat_recovery_in-s_heat_recovery_out)
+        results["lost_exergy"] = results["hot_exergy"]-results["cold_exergy"]
+        results["ex_co2"]={}
+        results["ex_co2"]["in"]=self.E(T_in,P)
+        results["ex_co2"]["out"]=self.E(t_heat_recovery_out,P)
         return results
+    
+    def E(self,T,P):
+        H1=CP.PropsSI('H', 'T', T+273.15, 'P', P, "REFPROP::co2")
+        S1=CP.PropsSI('S', 'T', T+273.15, 'P', P, "REFPROP::co2")
+        H0=CP.PropsSI('H', 'T', self._T_amb+273.15, 'P', self._p_amb, "REFPROP::co2")
+        S0=CP.PropsSI('S', 'T', self._T_amb+273.15, 'P', self._p_amb, "REFPROP::co2")
+        a=H1-H0-(self._T_amb+273.15)*(S1-S0)
+        return a
+    def ex_calculations(self,a1,a2,Q):
+        gcpw=(a1-a2-293.15*math.log(a1/a2))/(a1-a2)
+        exergy = Q*gcpw
+        return exergy
+    def ex_calculations1(self,a1,Q):
+        gcpw=1-(293.15)/(a1+273.15)
+        exergy = Q*gcpw
+        return exergy
     
     def evaluation_indicators(self,results,H_in):
         eva={}
-        eva["hydrator_lost"] = H_in*0.05
-        eva["h_lost_benchmark"]=results["High_h_recovery"]["h_lost_recovery"]+results["Low_h_recovery"]["h_lost_recovery"]+results["heat_recovery"]["h_lost_heat_recovery"]
-        eva["e_lost_benchmark"]=results["B_primary_turbine"]["e_lost_turbine"]+results["B_secondary_turbine"]["e_lost_turbine"]+results["B_primary_compressor"]["e_lost_compressor"]+results["B_secondary_compressor"]["e_lost_compressor"]
+        eva["hydrator_lost"] = H_in*(1-self._hydrator_eff)
+        eva["h_lost_benchmark"]=(results["High_h_recovery"]["h_lost_recovery"]
+                                 +results["Low_h_recovery"]["h_lost_recovery"]
+                                 +results["heat_recovery"]["h_lost_heat_recovery"])
+        eva["e_lost_benchmark"]=(results["B_primary_turbine"]["e_lost_turbine"]
+                                 +results["B_secondary_turbine"]["e_lost_turbine"]
+                                 +results["B_primary_compressor"]["e_lost_compressor"]
+                                 +results["B_secondary_compressor"]["e_lost_compressor"])
         eva["lost_benchmark"]=eva["h_lost_benchmark"]+eva["e_lost_benchmark"]
 
-        eva["power_benchmark"]=-results["B_primary_compressor"]["power_compressor"]-results["B_secondary_compressor"]["power_compressor"]+results["B_primary_turbine"]["power_turbine"]+results["B_secondary_turbine"]["power_turbine"]
+        eva["power_benchmark"]=(-results["B_primary_compressor"]["power_compressor"]
+                                -results["B_secondary_compressor"]["power_compressor"]
+                                +results["B_primary_turbine"]["power_turbine"]
+                                +results["B_secondary_turbine"]["power_turbine"])
         eva["hot_cost_benchmark"]=results["heat_recovery"]["hot_heat_recovery"]
-        eva["hot_in_benchmark"]=-results["primary_h_exchanger"]["hot_out_h_exchanger"]-results["secondary_h_exchanger"]["hot_out_h_exchanger"]
-        eva["hot_out_benchmark"] = results["cooling_tower"]["hot_r"]
+        eva["hot_in_benchmark"]=(results["primary_h_exchanger"]["hot_in_h_exchanger"]
+                                 +results["secondary_h_exchanger"]["hot_in_h_exchanger"])
         
-        eva["mass_flow"]=(H_in*0.95)/eva["hot_in_benchmark"]
-        eva["re_Heat_in"]=H_in
-        eva["hot_cost"]=eva["mass_flow"]*eva["hot_cost_benchmark"]
+        eva["mass_flow"]=(H_in*self._hydrator_eff)/eva["hot_in_benchmark"]
+        eva["re_Heat_in"]=H_in*self._hydrator_eff
+        eva["hot_cost_gas"]=eva["mass_flow"]*eva["hot_cost_benchmark"]
         eva["power"]=eva["mass_flow"]*eva["power_benchmark"]
-        eva["hot_out"]=eva["mass_flow"]*eva["hot_out_benchmark"]
-        eva["cooling_lost"]=results["cooling_tower"]["hot_cooling_tower"]*eva["mass_flow"]
-        eva["lost"]=(eva["mass_flow"]*eva["lost_benchmark"])+eva["hydrator_lost"]+eva["cooling_lost"]
-   
-        eva["Energy efficiency"]=(eva["power"]+eva["hot_out"])/(H_in+eva["hot_cost"])
+        eva["cooling_lost"]=(results["cooling_tower"]["hot_cooling_tower"]
+                             +results["intercooler"]["hot_cooling_tower"])*eva["mass_flow"]
+        eva["lost_all"]=(eva["mass_flow"]*eva["lost_benchmark"])+eva["cooling_lost"]
+        eva["lost"]={}
+        eva["lost"]["power"]=eva["e_lost_benchmark"]*eva["mass_flow"]
+        eva["lost"]["hot"]=eva["h_lost_benchmark"]*eva["mass_flow"]
+        eva["lost"]["hydr"]=eva["hydrator_lost"]
+        eva["lost"]["cooling"]=eva["cooling_lost"]
+        eva["exergy"]={}
+        eva["exergy"]["re_Heat_in"]=(results["primary_h_exchanger"]["hot_in_h_exchanger"]*results["primary_h_exchanger"]["Process_taste"]
+                                 +results["secondary_h_exchanger"]["hot_in_h_exchanger"]*results["secondary_h_exchanger"]["Process_taste"])*eva["mass_flow"]
+        eva["exergy"]["hot_cost_gas"]=results["heat_recovery"]["hot_exergy"]*eva["mass_flow"]
+        eva["exergy"]["power"]=eva["power"]
+        eva["exergy"]["lost_all"]=eva["exergy"]["re_Heat_in"]+eva["exergy"]["hot_cost_gas"]-eva["exergy"]["power"]
+        eva["exergy"]["lost"]={}
+        eva["exergy"]["lost"]["e_lost"]=eva["lost"]["power"]
+        eva["exergy"]["lost"]["p_turb_lost"] = results["B_primary_turbine"]["exergy_lost_turbine"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["s_turb_lost"] = results["B_secondary_turbine"]["exergy_lost_turbine"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["p_comp_lost"] = results["B_primary_compressor"]["exergy_lost_compressor"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["s_comp_lost"] = results["B_secondary_compressor"]["exergy_lost_compressor"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["High_h_recovery"] = results["High_h_recovery"]["lost_exergy"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["Low_h_recovery"] = results["Low_h_recovery"]["lost_exergy"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["heat_recovery"] = results["heat_recovery"]["lost_exergy"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["cooling_tower"] = results["cooling_tower"]["exergy_lost"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["intercooler"] = results["intercooler"]["exergy_lost"]*eva["mass_flow"]
+        eva["exergy"]["lost"]["all"]=(eva["exergy"]["lost"]["e_lost"]+eva["exergy"]["lost"]["p_turb_lost"]
+                                      +eva["exergy"]["lost"]["s_turb_lost"]+eva["exergy"]["lost"]["p_comp_lost"]
+                                      +eva["exergy"]["lost"]["s_comp_lost"]+eva["exergy"]["lost"]["High_h_recovery"]
+                                      +eva["exergy"]["lost"]["Low_h_recovery"]+eva["exergy"]["lost"]["heat_recovery"]
+                                      +eva["exergy"]["lost"]["cooling_tower"]+eva["exergy"]["lost"]["intercooler"])
+
+        eva["exergy_efficiency"]=eva["exergy"]["power"]/(eva["exergy"]["re_Heat_in"]+eva["exergy"]["hot_cost_gas"])
+        eva["energy_efficiency"]=(eva["power"])/(eva["re_Heat_in"]+eva["hot_cost_gas"])
         eva["flue_gas_mass_flow"] = eva["mass_flow"]*results["heat_recovery"]["n"]
         return eva
 
@@ -293,15 +421,19 @@ if __name__ == '__main__':
     parameters["min_temperature_exchange"] = 15
     parameters["industrial_waste_heat_t"] =300 #℃
     parameters["heat_transfer_loss_eff"] = 0.96
-    parameters["t_reaction_B"] = 465
-    parameters["p_bray_H_B"] = 30e6
-    parameters["p_bray_MH_B"] = 16217752.142109105
-    parameters["p_bray_ML_B"] = 16217752.142109105
-    parameters["p_bray_L_B"] = 7.5e6
-    parameters["T_amb"] = 20
+    parameters["t_amb"] = 20
     parameters["p_amb"] = 101325
+
+    parameters["hydrator_eff"] = 0.95   #水合器器效率
+    parameters["p_bray_L_B"] = 7.5e6
 
     BraytonHBs = Brayton(parameters)
     Hydrator_heat=	1498957.696586326-30766.434959109065
-    results = BraytonHBs.solve(Hydrator_heat)
+    inputs={}
+    inputs["p_bray_H_B"] = 30e6
+    inputs["p_bray_MH_B"] = 16217752.142109105
+    inputs["p_bray_ML_B"] = 12217752.142109105
+    inputs["p_Hydr"] = 1e5
+    inputs["Hydr_overheating_temperature"] = 40
+    results = BraytonHBs.solve(Hydrator_heat,inputs)
     print(results)

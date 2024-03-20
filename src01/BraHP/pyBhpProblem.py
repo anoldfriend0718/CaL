@@ -67,7 +67,7 @@ class BhpProblem(ea.Problem):
         BraytonHeatPump_parameters=self._compose_BraytonHeatPump_parameters()
         self._BraytonHeatPump = BraytonHeatPump(BraytonHeatPump_parameters)
         # for plant constraints
-        self._high_t = 615
+        self._high_t = 610
         self._hot_util=10
         # for concurrent worker
         self._max_map_executor=20
@@ -105,7 +105,7 @@ class BhpProblem(ea.Problem):
         parameters["t_isentropic_eff_mc"] = t_isentropic_eff_mc
         parameters["mechanical_eff"] = mechanical_eff  #机械效率
         parameters["min_temperature_exchange"] = 15
-        parameters["industrial_waste_heat_t"] =300 #℃
+        parameters["industrial_waste_heat_t"] =200 #℃
         parameters["heat_transfer_loss_eff"] = 0.96
         parameters["t_reaction"] = 525
         #parameters["p_bray_H"]=Vars[i,0]
@@ -152,10 +152,8 @@ class BhpProblem(ea.Problem):
         if self._obj=="energy":
             return results["energy_eff"]
         elif self._obj=="cop":
-            if "invCosts" in results.keys() and "specific" in results["invCosts"].keys():
-                return results["cop"]
-            inf=1e6
-            return inf
+            
+            return results["cop"]
         else:
             raise ValueError("objective is invaid. It should be energy or economic.")
 

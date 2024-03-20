@@ -105,7 +105,7 @@ class BProblem(ea.Problem):
         parameters["t_isentropic_eff_mc"] = t_isentropic_eff_mc
         parameters["mechanical_eff"] = mechanical_eff  #机械效率
         parameters["min_temperature_exchange"] = 15
-        parameters["industrial_waste_heat_t"] =300 #℃
+        parameters["industrial_waste_heat_t"] =200 #℃
         parameters["heat_transfer_loss_eff"] = 0.96
         parameters["t_reaction_B"] = 465
         #parameters["p_bray_H"]=Vars[i,0]

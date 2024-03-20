@@ -13,9 +13,6 @@ if __name__ == '__main__':
     flue_gas_composition["co2"]=0.1338
     flue_gas_composition["o2"]=0.0384
     flue_gas_composition["n2"]=0.6975
-    p_bray_M = 13e6
-    p_bray_L = 7.5e6
-    t_reaction = 525
 
     all_plant_results={}
     all_best_variables={}
@@ -28,16 +25,16 @@ if __name__ == '__main__':
         else:
             shutil.rmtree(folder)
             os.mkdir(folder)
-    print(f"solving the case: PM = {p_bray_M}, PL = {p_bray_L}, T = {t_reaction}")
-    case_id=f"PM={p_bray_M}_PL={p_bray_L}_T={t_reaction}"
+    print(f"solving the case: PM = {1}, PL = {1}, T = {1}")
+    case_id=f"PM={1}_PL={1}_T={1}"
     print(f"case_id: {case_id}")
     parameters={}
     parameters["flue_gas_composition"]=flue_gas_composition
-    parameters["obj"] = "energy"
+    parameters["obj"] = "power"
     problem = CaesProblem(parameters)
     algorithm = ea.soea_DE_currentToBest_1_bin_templet(problem,
                                     ea.Population(Encoding='RI', NIND=8),
-                                    MAXGEN=70,  # 最大进化代数。
+                                    MAXGEN=150,  # 最大进化代数。
                                     logTras=1, #,  # 表示每隔多少代记录一次日志信息，0表示不记录。
                                     trappedValue=1e-6,  # 单目标优化陷入停滞的判断阈值。
                                     maxTrappedCount=100)  # # 进化停滞计数器最大上限值。
@@ -51,6 +48,27 @@ if __name__ == '__main__':
     print(best_vars)
     # copy the trace plot to folder
     shutil.copyfile("./Trace Plot.svg",f"{convergence_plots_folder}/{case_id}.svg")
-    plant_results=problem.solve(best_vars[0,0])
+    inputs={}
+    inputs["p_bray_H"] = best_vars[0,0]#优化变量1，热泵循环最高压力
+    inputs["p_bray_M"] = best_vars[0,1] #优化变量2，热泵循环中间压力
+    inputs["Dehy_caoh2_in"]=best_vars[0,2]
+    inputs["p_Dehy"] = best_vars[0,3] #变量4，反应器压力
+    inputs["Dehy_overheating_temperature"] = best_vars[0,4] #变量2，脱水反应器过热温度
+
+    inputs["p_bray_H_B"] = best_vars[0,5]
+    inputs["p_bray_MH_B"] = best_vars[0,6]
+    inputs["p_bray_ML_B"] = best_vars[0,7]
+    inputs["p_Hydr"] = best_vars[0,8]
+    inputs["Hydr_overheating_temperature"] = best_vars[0,9]
+
+    inputs["Hydr_cao_in"]=best_vars[0,10]
+
+    inputs["cn_m1"] = best_vars[0,11]
+    inputs["m2"] = best_vars[0,12]#补充烟气
+    inputs["T_X"] = 1
+    inputs["m1"] = 0#供暖水
+
+    plant_results=problem.solve(inputs)
     print(f"plant results: {plant_results}")
-    print(plant_results["pinch_analysis_text"])
+    print(plant_results["Dehy"]["pinch_analysis_text"])
+    print(plant_results["Hydr"]["HEN"]["pinch_analysis_text"])
