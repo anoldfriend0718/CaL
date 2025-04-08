@@ -1,5 +1,6 @@
 import math
 import json
+import os
 import numpy as np
 
 class Wulumuqi_project(object):
@@ -71,7 +72,8 @@ class economic_comparer(object):
 
 
 if __name__=="__main__":
-    with open("/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL/src/CaL-CC-HS/tmp_results4.json","r") as fp:
+    CaLRepo = os.environ.get("CaLRepo")
+    with open(f"{CaLRepo}/thermodynamics/CaL/src/CaL-CC-HS/tmp_results4.json","r") as fp:
         plant_results=json.load(fp)
     economic_inputs={}
     economic_inputs["elec_price"]=0.165 #元/千瓦时

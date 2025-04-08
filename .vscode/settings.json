@@ -1,3 +1,7 @@
 {
-    "python.pythonPath": ".venv/bin/python"
+    "python.pythonPath": ".venv/bin/python",
+    "notebook.output.textLineLimit": 100,
+    "notebook.output.scrolling": true,
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    "jupyter.envFile": "${workspaceFolder}/.env"
 }

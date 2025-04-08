@@ -3,7 +3,7 @@ tmp*
 **/debug
 *.svg
 **/results/*
-
+src/CaL-CC-HS/*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

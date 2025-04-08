@@ -1,7 +1,6 @@
 import os
 import sys
-# CaLRepo = os.environ.get("CaLRepo")
-CaLRepo ='/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
+CaLRepo = os.environ.get("CaLRepo")
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
 from pyPinch import PyPinch

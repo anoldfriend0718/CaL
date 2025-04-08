@@ -1,7 +1,6 @@
 import os
 import sys
-# CaLRepo = os.environ.get("CaLRepo")
-CaLRepo = '/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL'
+CaLRepo = os.environ.get("CaLRepo")
 # print(CaLRepo)
 sys.path.append(f"{CaLRepo}/utilities/")
 
@@ -88,7 +87,8 @@ if __name__=="__main__":
         "operation_hours":3435,
         "calciner_thermal_loss":0.06,
     }
-    results_folder="/home/anoldfriend/Workspace/MyRepo/thermodynamics/CaL/src/CaL-CC-HS/results/revised/SA"
+    CaLRepo = os.environ.get("CaLRepo")
+    results_folder=f"{CaLRepo}/thermodynamics/CaL/src/CaL-CC-HS/results/revised/SA"
     variables={
         "cao_conversion":[0.1,0.15,0.2,0.3,0.4,0.5],
         "T_water_prod_out":[80,85,90,100,110],
