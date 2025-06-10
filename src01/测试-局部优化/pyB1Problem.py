@@ -1,7 +1,7 @@
 import geatpy as ea
 import numpy as np
 import concurrent.futures
-from pyBraytonHeatPump import BraytonHeatPump
+from pyBrayton import Brayton
 T_amb = 20
 p_amb = 101325
 P_amb = 101325
@@ -29,7 +29,7 @@ steam_pressure_loss_ratio = 0.01
 decarbon_flue_gas_pressure_loss_ratio  = 0.02 #estimated based on flue_gas_pressure_loss_ratio
 dehydrator_pressure_loss=15e3 #https://doi.org/10.1016/j.jclepro.2019.02.049
 
-t_reaction = 525
+t_reaction = 465
 p_bray_H = 20e6
 p_bray_M = 13e6
 p_bray_L = 7.5e6
@@ -47,9 +47,9 @@ hot_water_pipe_length=1000 #m
 water_pump_hydraulic_efficiency=0.75
 water_pump_mechanical_efficiency=0.94
 
-class BhpProblem(ea.Problem):
+class BProblem(ea.Problem):
     def __init__(self,BraytonHeatPump_parameters):
-        name = 'BhpProblem'  # 初始化name（函数名称，可以随意设置）
+        name = 'BProblem'  # 初始化name（函数名称，可以随意设置）
 
          ##  plant variabels
         self._flue_gas_composition=BraytonHeatPump_parameters["flue_gas_composition"]
@@ -65,9 +65,9 @@ class BhpProblem(ea.Problem):
         self._obj=BraytonHeatPump_parameters["obj"]
         # initialize plant
         BraytonHeatPump_parameters=self._compose_BraytonHeatPump_parameters()
-        self._BraytonHeatPump = BraytonHeatPump(BraytonHeatPump_parameters)
+        self._Brayton = Brayton(BraytonHeatPump_parameters)
         # for plant constraints
-        self._high_t = 610
+        self._high_t = 615
         self._hot_util=10
         # for concurrent worker
         self._max_map_executor=20
@@ -79,12 +79,12 @@ class BhpProblem(ea.Problem):
         ## generic algorithm parameters 
         M = 1  # 优化目标个数
         maxormins = self._get_maxormins(M)  # 初始化maxormins（目标最小最大化标记列表，1：最小化该目标；-1：最大化该目标）
-        Dim = 2  # 初始化Dim（决策变量维数）
+        Dim = 3  # 初始化Dim（决策变量维数）
         varTypes = [0] * Dim # 初始化varTypes（决策变量的类型，0：实数；1：整数）
-        lb = [17e6,120e5]  # 高压下界
-        ub = [22e6,140e5] # 高压上界
-        lbin = [1,1] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
-        ubin = [1,1]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
+        lb = [300e5,130e5,75e5]  # 高压下界、中压下界
+        ub = [300e5,300e5,300e5] # 高压上界、中压下界
+        lbin = [1,1,1] # 决策变量下边界（0表示不包含该变量的下边界，1表示包含）
+        ubin = [1,1,1]  # 决策变量上边界（0表示不包含该变量的上边界，1表示包含）
 
         return M,maxormins,Dim,varTypes,lb,ub,lbin,ubin
     
@@ -105,12 +105,12 @@ class BhpProblem(ea.Problem):
         parameters["t_isentropic_eff_mc"] = t_isentropic_eff_mc
         parameters["mechanical_eff"] = mechanical_eff  #机械效率
         parameters["min_temperature_exchange"] = 15
-        parameters["industrial_waste_heat_t"] =350 #℃
+        parameters["industrial_waste_heat_t"] =200 #℃
         parameters["heat_transfer_loss_eff"] = 0.96
-        parameters["t_reaction"] = 525
+        parameters["t_reaction_B"] = 465
         #parameters["p_bray_H"]=Vars[i,0]
         #parameters["p_bray_M"] = 13e6
-        parameters["p_bray_L"] = 7.5e6
+        parameters["p_bray_L_B"] = 7.5e6
         parameters["T_amb"] = T_amb
         parameters["p_amb"] = p_amb
         return parameters
@@ -126,9 +126,10 @@ class BhpProblem(ea.Problem):
             for i in np.arange(0,case_num,1):
                 inputs={}
                 inputs["p_bray_H"]=Vars[i,0]
-                inputs["p_bray_M"]=Vars[i,1]
-                inputs["Store_electrical_power"]=1e6
-                future=map_executor_pool.submit(self._BraytonHeatPump.solve,inputs)
+                inputs["p_bray_M1"]=Vars[i,1]
+                inputs["p_bray_M2"]=Vars[i,2]
+                inputs["Hydrator_heat"]=1498957.696586326-30766.434959109065
+                future=map_executor_pool.submit(self._Brayton.solve,inputs)
                 futures.append(future)
             # reduce
             for _, future in enumerate(futures):
@@ -139,9 +140,9 @@ class BhpProblem(ea.Problem):
                 obj=self._get_obj(results)
                 objs.append(obj)
                     #constrainst
-                c0=1-results["mian_h_exchanger"]["main_exchanger"]
-                c1=results["primary_compressor"]["t_compressor_out"]-self._high_t #
-                c2=results["secondary_compressor"]["t_compressor_out"]-self._high_t
+                c0=results["B_primary_compressor"]["t_compressor_out"]-self._high_t
+                c1=results["B_primary_compressor"]["t_compressor_out"]-self._high_t #
+                c2=results["B_secondary_compressor"]["t_compressor_out"]-self._high_t
                     # c3=T_amb+self._delta_T_pinch-result["T_cao_reactor_in"]
                 constraints.append([c0,c1,c2])
                
@@ -150,13 +151,15 @@ class BhpProblem(ea.Problem):
         return f, CV
     def _get_obj(self,results):
         if self._obj=="energy":
-            return results["energy_eff"]
+            return results["evaluation_indicators"]["Energy efficiency"]
         elif self._obj=="cop":
-            
-            return results["cop"]
+
+            return results["evaluation_indicators"]["power"]
+
+
         else:
             raise ValueError("objective is invaid. It should be energy or economic.")
 
     def solve(self,inputs):
-        results=self._BraytonHeatPump.solve(inputs)
+        results=self._Brayton.solve(inputs)
         return results

@@ -99,20 +99,27 @@ class BhpProblem(ea.Problem):
         else:
             raise ValueError("objective is invaid. It should be energy or economic.")
     def _compose_BraytonHeatPump_parameters(self):
-        parameters={}
-        parameters["flue_gas_composition"] = self._flue_gas_composition
-        parameters["isentropic_eff_mc"] = isentropic_eff_mc  #等熵效率
-        parameters["t_isentropic_eff_mc"] = t_isentropic_eff_mc
-        parameters["mechanical_eff"] = mechanical_eff  #机械效率
-        parameters["min_temperature_exchange"] = 15
-        parameters["industrial_waste_heat_t"] =350 #℃
-        parameters["heat_transfer_loss_eff"] = 0.96
-        parameters["t_reaction"] = 525
-        #parameters["p_bray_H"]=Vars[i,0]
-        #parameters["p_bray_M"] = 13e6
-        parameters["p_bray_L"] = 7.5e6
-        parameters["T_amb"] = T_amb
-        parameters["p_amb"] = p_amb
+        parameters = dict() 
+        flue_gas_composistion = dict()
+        flue_gas_composistion["co2"] = 0.1338
+        flue_gas_composistion["o2"] = 0.0384
+        flue_gas_composistion["n2"] = 0.6975
+        flue_gas_composistion2 = dict()
+        flue_gas_composistion2["co2"] = 0.01338
+        flue_gas_composistion2["o2"] = 0.0384
+        flue_gas_composistion2["n2"] = 0.6975
+        parameters["flue_gas_composition"] = flue_gas_composistion
+        parameters["isentropic_eff_mc"] = 0.88  #压缩机等熵效率
+        parameters["t_isentropic_eff_mc"] = 0.92 #透平等熵效率
+        parameters["mechanical_eff"] = 0.98   #机械效率
+        parameters["min_temperature_exchange"] = 15 #变量1，换热器最小换热温差
+        parameters["industrial_waste_heat_t"] =350 #℃工业余热温度，变量3
+        parameters["heat_transfer_loss_eff"] = 0.96 #换热器热损失系数
+        parameters["t_amb"] = 20#环境温度
+        parameters["p_amb"] = 101325#环境压力
+        parameters["p_bray_L"] = 7.5e6#热泵低压
+        parameters["Store_electrical_power"]= 1e6
+
         return parameters
 
     def evalVars(self, Vars):  # 目标函数
@@ -125,9 +132,11 @@ class BhpProblem(ea.Problem):
             # map
             for i in np.arange(0,case_num,1):
                 inputs={}
-                inputs["p_bray_H"]=Vars[i,0]
-                inputs["p_bray_M"]=Vars[i,1]
-                inputs["Store_electrical_power"]=1e6
+                inputs["p_bray_H"] = Vars[i,0]#优化变量1，热泵循环最高压力
+                inputs["p_bray_M"] = Vars[i,1] #优化变量2，热泵循环中间压力
+                inputs["p_Dehy"] = 1e5 #变量4，反应器压力
+                inputs["Dehy_overheating_temperature"] = 20 #变量2，脱水反应器过热温度
+                
                 future=map_executor_pool.submit(self._BraytonHeatPump.solve,inputs)
                 futures.append(future)
             # reduce
