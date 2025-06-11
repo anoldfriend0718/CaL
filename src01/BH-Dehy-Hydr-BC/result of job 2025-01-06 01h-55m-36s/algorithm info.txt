@@ -1,1 +1,0 @@
-{'Algorithm Name': 'NSGA2', 'Algorithm MAXGEN': 30, 'Algorithm MAXTIME': None, 'Algorithm MAXEVALS': None}

@@ -1,2 +1,0 @@
-{'name': 'MyProblem', 'M': 2, 'maxormins': array([ 1, -1]), 'Dim': 5, 'varTypes': array([0, 0, 0, 0, 0]), 'lb': array([1.8e+07, 1.1e+07, 3.7e+02, 5.0e+02, 6.0e+01]), 'ub': array([2.0e+07, 1.3e+07, 4.6e+02, 7.0e+02, 8.0e+01]), 'borders': array([[1, 1, 1, 1, 1],
-       [1, 1, 1, 1, 1]])}

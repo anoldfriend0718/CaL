@@ -238,5 +238,6 @@ if __name__ == '__main__':
              CP.PropsSI('H', 'T', 95+273.15,
                         'P', 101325, "water"))
     print(a,(h_hsteam_in-h_hsteam_out),h_lwater_out-h_lwater_in)
+    print(np.__version__)
 
 
