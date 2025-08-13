@@ -418,8 +418,8 @@ if __name__ == '__main__':
     calcs = Dehydrator(parameters) 
 
     inputs={}
-    inputs["p_bray_H"] = 18716228#优化变量1，热泵循环最高压力
-    inputs["p_bray_M"] = 12481150 #优化变量2，热泵循环中间压力
+    inputs["p_bray_H"] =17318583#优化变量1，热泵循环最高压力
+    inputs["p_bray_M"] = 12303975 #优化变量2，热泵循环中间压力
     inputs["p_Dehy"] = 1e5 #变量4，反应器压力
     inputs["Economic Model Selection"] = 2 #经济模型选择，1Tesio，2Nathan T
     inputs["Compressor power limit"] = 200e6#功率界限，影响齿轮离心和滚筒离心模型的选取，单位W，桶式离心需体积流量

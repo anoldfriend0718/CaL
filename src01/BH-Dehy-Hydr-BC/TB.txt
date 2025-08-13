@@ -1,0 +1,13 @@
+同步到远程分支：
+git add .  # 将所有更改添加到暂存区
+git commit -m "Commit message here"  # 提交更改并添加提交消息
+git reset HEAD~1   # 取消提交的更改
+git push origin <branch_name>  # 将更改推送到指定的远程分支
+git push --force origin szh  #强制推送到远程分支
+
+本地仓库同步远程仓库的更改：
+git pull origin <branch_name>  # 拉取远程分支的最新更改到本地
+git reset --hard origin/szh    # 强制拉取远程分支的最新更改到本地
+
+（密码：zhang12345*.）
+备注：单目标优化：pyCaseProblem.py与main.py未更新，多目标优化CB_MOO.ipynb可运行

@@ -556,7 +556,7 @@ if __name__ == '__main__':
     parameters["p_amb"] = 101325   #环境压力
 
     parameters["p_bray_L"] = 7.5e6
-    parameters["Store_electrical_power"] = 10e6  #机组规模、容量
+    parameters["Store_electrical_power"] = 50e6  #机组规模、容量
     parameters["p_water_supply_in"] = 2e5 
     parameters["water_pressure_drop_rate"] = 100 #100Pa/m
     parameters["water_pipe_length"] = 1000
@@ -574,10 +574,10 @@ if __name__ == '__main__':
     parameters["p_bray_L_B"] = 7.5e6
 
     inputs={}
-    inputs["p_bray_H"] = 18716228#优化变量1，热泵循环最高压力
-    inputs["p_bray_M"] = 12481150 #优化变量2，热泵循环中间压力
+    inputs["p_bray_H"] =17318583#优化变量1，热泵循环最高压力
+    inputs["p_bray_M"] = 12303975 #优化变量2，热泵循环中间压力
     inputs["p_Dehy"] = 1e5 #变量4，反应器压力
-    inputs["Economic Model Selection"] = 1 #经济模型选择，1Tesio，2Nathan T
+    inputs["Economic Model Selection"] = 2 #经济模型选择，1Tesio，2Nathan T
     inputs["Compressor power limit"] = 200e6#功率界限，影响齿轮离心和滚筒离心模型的选取，单位W，桶式离心需体积流量
     inputs["Turbine power limit"] = 35e6
     inputs["Dehy_overheating_temperature"] = 20 #变量2，脱水反应器过热温度

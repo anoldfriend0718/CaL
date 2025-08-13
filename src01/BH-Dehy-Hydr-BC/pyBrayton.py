@@ -407,11 +407,11 @@ class Brayton(object):
             pt_value = results["B_primary_turbine"]["power_turbine"]*a22
             pt_ff=results["B_primary_turbine"]["f"]
             pt_f=pt_value/1e6
-            result["cost_pt"] = 406200*pt_f**0.8*pt_ff if c > pt_value else 182600*pt_f**0.5561*pt_ff*0.9814
+            result["cost_pt"] = 406200*pt_f**0.8*pt_ff*0.9814
             st_value = results["B_secondary_turbine"]["power_turbine"]*a22
             st_ff=results["B_secondary_turbine"]["f"]
             st_f=st_value/1e6
-            result["cost_st"] = 406200*st_f**0.8*st_ff if c > st_value else 182600*st_f**0.5561*st_ff*0.9814
+            result["cost_st"] = 406200*st_f**0.8*st_ff*0.9814
 
             pc_value = results["B_primary_compressor"]["power_compressor"]*a22
             pc_f=pc_value/1e6

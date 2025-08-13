@@ -16,14 +16,7 @@ TASC_multiplier=1.13
 piping_integration_cost_indictor=0.05
 #单次储能时间8小时
 Single_run_time=8*3600
-#年循环次数（储能2560小时，释能2560小时，年运行时间5120小时 250天2000小时 320天2560小时
-Annual_cycle_count = 320
-#循环极限次数
-Limit_cycle_number = 50
-#安全存储比例
 
-#氢氧化钙价格RMB/t
-caoh2_unit_price=1500
 M_cao = 56e-3  # kg/mol
 M_caoh2 = 74e-3  # kg/mol
 
@@ -38,12 +31,18 @@ class Cost_Estimator(object):
         
     def solve(self,inputs,economic_inputs):
         self._res = self._hy.solve(inputs)
+        #单次储能时间8小时
+        Single_run_time=8*3600 #年循环次数（储能2560小时，释能2560小时，年运行时间5120小时 250天2000小时 320天2560小时
+        #循环极限次数
+        Limit_cycle_number = economic_inputs["caoh2_unit_price"]/ economic_inputs["caoh2_price/life_rate"]
+        #安全存储比例
         cost={}
         cost["BH"]= self._res["BH"]["cost"]
         cost["Dehy"]= self._res["Dehy"]["cost"]
         cost["Hydr"]= self._res["Hydr"]["cost"]
         cost["BC"]= self._res["Brayton"]["cost"]
         CaOH2_storage_mass_flow = self._res["Dehy"]["dehydrator"]["in"]["m_camix"]
+        CaOH2_storage_once = CaOH2_storage_mass_flow * Single_run_time / 1000#t
         total_power = self._res["Case_All"]["power_in"]
         total_power_out = self._res["Case_All"]["power"]
         total_hot_out = self._res["Case_All"]["hot_out"]
@@ -62,7 +61,7 @@ class Cost_Estimator(object):
         #工程项目成本
         construct_costs["engineering&project"]=engineering_project_cost_indictor*(equipment_costs["total"]+construct_costs["installation"])
         #初始材料成本
-        construct_costs["initial_material"]=self.calculate_material_costs(CaOH2_storage_mass_flow)*2
+        construct_costs["initial_material"]=CaOH2_storage_once*economic_inputs["caoh2_unit_price"]*1.3 #1.3是安全存储比例
         #实际总支出
         construct_costs["total as-spent"]=TASC_multiplier*(equipment_costs["total"]+construct_costs["installation"]+
             construct_costs["labour"]+construct_costs["engineering&project"])+construct_costs["initial_material"]
@@ -70,8 +69,8 @@ class Cost_Estimator(object):
         ## 运营成本
         operation_costs={}
         #等效补充成本
-        make_up_limestone_percentage=CaOH2_storage_mass_flow*(Annual_cycle_count/Limit_cycle_number)
-        operation_costs["make-up_limestone"]=make_up_limestone_percentage*caoh2_unit_price
+        make_up_limestone_percentage=CaOH2_storage_once*(economic_inputs["Annual_cycle_count"]/Limit_cycle_number)
+        operation_costs["make-up_limestone"]=make_up_limestone_percentage*economic_inputs["caoh2_unit_price"]
         #劳动力成本
         operation_costs["labour"]=economic_inputs["operation_labour_cost_indictor"]*construct_costs["total as-spent"]
         #维护成本
@@ -96,13 +95,14 @@ class Cost_Estimator(object):
         #内部收益率
         r_initial_guess=0.01
         solution = fsolve(self.calculate_irr, r_initial_guess, args=(construct_costs["total as-spent"],
-                                 Annual_operating_income["electricity"]+Annual_operating_income["hot"],
+                                 Annual_operating_income["electricity"]+Annual_operating_income["hot"]-operation_costs["total as-spent"],
                                  N))
         IRR = solution[0]
         #动态回收周期 先检查容量，没有收益不能运行这个
-        #dpp = self.discounted_payback_period(construct_costs["total as-spent"],
-        #                                    r,
-        #       Annual_operating_income["electricity"]+Annual_operating_income["hot"])
+        dpp = self.discounted_payback_period(construct_costs["total as-spent"],
+                                            r,
+               Annual_operating_income["electricity"]+Annual_operating_income["hot"]-operation_costs["total as-spent"],
+               N)
         investment_costs={}
         investment_costs["BH"]= self._res["BH"]
         investment_costs["Dehy"]= self._res["Dehy"]
@@ -116,13 +116,13 @@ class Cost_Estimator(object):
         investment_costs["LCOE"]=LCOE
         investment_costs["IRR"]=IRR
         investment_costs["Round-trip"]=self._res["Case_All"]["Round-trip_eff"]
-        #investment_costs["DPP"]=dpp
+        investment_costs["DPP"]=dpp
     
         return investment_costs
     
     def calculate_material_costs(self,CaOH2_storage_mass_flow):
         CaOH2_storage_mass=CaOH2_storage_mass_flow*Single_run_time
-        total_CaOH2_storage_mass_ton=(CaOH2_storage_mass)/1000 #循环量
+        total_CaOH2_storage_mass_ton=(CaOH2_storage_mass)/1000 #循环量t
         initial_material_cost=caoh2_unit_price*total_CaOH2_storage_mass_ton/1e6
         return initial_material_cost
     
@@ -210,13 +210,13 @@ class Cost_Estimator(object):
         return FC
     
     def _cost_bretonHP_turb(self,TC_Dollars):
-        year=2017
+        year=2020
         #TC_Dollars=mass_co2*492.2(1-mius)*((Tin+273.15)/(Tout+273.15))*math.log((Tin+273.15)/(Tout+273.15))(1+math.exp(0.036*(Tin+273.15)-65.66))
         TC=self._convert_to_RMB_in_target_year(TC_Dollars,year)
         return TC 
     
     def _cost_bretonHP_comp(self,CC_Dollars):
-        year=2017
+        year=2020
         #CC_Dollars=mass_co2*59.1(1-mius)*(Pout/Pin)*math.log(Pout/Pin)
         CC=self._convert_to_RMB_in_target_year(CC_Dollars,year)
         return CC 
@@ -235,7 +235,7 @@ class Cost_Estimator(object):
         #the referred year: 2018
         #the given Money unit: EUR
         #Ai unit: m2,p: Pa
-        year=2017
+        year=2020
         #p=p/1e5
         #CHEN_Dollars=2546.9*math.pow(At,0.67)*math.pow(p,0.28)*self._Eur2Dollars[year]/1e6  #unit M$ 
         CHEN=self._convert_to_RMB_in_target_year(CHEN_Dollars,year)
@@ -244,15 +244,20 @@ class Cost_Estimator(object):
     def calculate_irr(self,r,a,b,N):
         return a-sum((b/(1+r)**x) for x in range(1, N+1))
     
-    def discounted_payback_period(self,C, R, A):
+    def discounted_payback_period(self,C, R, A, N):
+        if C <= 0 or R < 0 or A <= 0:
+
+             return 0  # 如果C小于等于0，或者R小于0，或者A小于等于0，返回0
 
         cumulative_discounted_cash_flow = 0.0
-        year = 0.0
+        year = 0
+        max_years = N
         while cumulative_discounted_cash_flow < C:
             discounted_A = A / ((1 + R) ** (year + 1))
             cumulative_discounted_cash_flow += discounted_A
             year += 1.0
-            
+            if year > max_years:
+                     return max_years+1
             if cumulative_discounted_cash_flow >= C and year > 0:
                 
                 previous_cumulative = cumulative_discounted_cash_flow - discounted_A
@@ -299,10 +304,10 @@ if __name__ == '__main__':
     parameters["p_bray_L_B"] = 7.5e6
 
     inputs={}
-    inputs["p_bray_H"] = 18716228#优化变量1，热泵循环最高压力
-    inputs["p_bray_M"] = 12481150 #优化变量2，热泵循环中间压力
+    inputs["p_bray_H"] =17318583#优化变量1，热泵循环最高压力
+    inputs["p_bray_M"] = 12303975 #优化变量2，热泵循环中间压力
     inputs["p_Dehy"] = 1e5 #变量4，反应器压力
-    inputs["Economic Model Selection"] = 1 #经济模型选择，1Tesio，2Nathan T
+    inputs["Economic Model Selection"] = 2 #经济模型选择，1Tesio，2Nathan T
     inputs["Compressor power limit"] = 200e6#功率界限，影响齿轮离心和滚筒离心模型的选取，单位W，桶式离心需体积流量
     inputs["Turbine power limit"] = 35e6
     inputs["Dehy_overheating_temperature"] = 20 #变量2，脱水反应器过热温度
@@ -322,17 +327,19 @@ if __name__ == '__main__':
     economic_inputs={}
     #economic_inputs["limestone_price"]=70
     #economic_inputs["calciner_cost_factor"]=1
-    economic_inputs["elec_price"]=0 #元/千瓦时  ##S6
+    economic_inputs["caoh2_unit_price"]=1500 #元/吨
+    economic_inputs["caoh2_price/life_rate"] = 30
+    economic_inputs["elec_price"]=0.26 #元/千瓦时  ##S6
     economic_inputs["hot_price_h"] = 0.1542 #每千瓦时0.1542元，42.84元/吉焦
-    economic_inputs["elec_price_h"] = 1.0827
-    economic_inputs["operation_hours"]=Annual_cycle_count*8 # hours 250天2000小时 320天2560小时
+    economic_inputs["elec_price_h"] = 1.5912#1.0827
+    economic_inputs["Annual_cycle_count"]=320
+    economic_inputs["operation_hours"]=economic_inputs["Annual_cycle_count"]*8 # hours 250天2000小时 320天2560小时
     economic_inputs["discount_ratio"]=6/100 #8%
-    economic_inputs["operational_years"]=60
-    economic_inputs["operation_labour_cost_indictor"]=0.025/2*(2/3) #劳动力比例
-    #年运行时间为一般机组的一半,天运行时间为一般机组的2/3，投资成本为一般机组的两倍以上
+    economic_inputs["operational_years"]=30
+    economic_inputs["operation_labour_cost_indictor"]=0.025/2#劳动力比例
+    #年运行时间为一般机组的一半
     economic_inputs["maintain_cost_indictor"]=0.025/2#维护比例 0.025,
-    #年运行时间为一般机组的一半，投资成本为一般机组的两倍以上故修正
-
+    #年运行时间为一般机组的一半
     cost = Cost_Estimator(parameters)
     results = cost.solve(inputs,economic_inputs)
     data_for_json = {key: (value.item() if isinstance(value, np.floating) else value) for key, value in results.items()}

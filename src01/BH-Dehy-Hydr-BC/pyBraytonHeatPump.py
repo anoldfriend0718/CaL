@@ -390,7 +390,8 @@ class BraytonHeatPump(object):
             t_value=results["turbine"]["power_turbine"]*a22
             t_ff=results["turbine"]["f"]
             t_f=t_value/1e6
-            result["cost_t"] = 406200*t_f**0.8*t_ff if c > t_value else 182600*t_f**0.5561*t_ff*0.9814
+            result["cost_t"] = 406200*t_f**0.8*t_ff*0.9814
+            #result["cost_t"] = 406200*t_f**0.8*t_ff if c > t_value else 182600*t_f**0.5561*t_ff*0.9814
             result["cost_pe"]=a_pe/t_pe* self.cHe(a_pe/t_pe)
             result["cost_se"]=a_se/t_se* self.cHe(a_se/t_se)
             result["cost_me"]=351.81*(a_me/t_me)**0.7544/7.2492
@@ -528,8 +529,8 @@ if __name__ == '__main__':
 
 
     inputs={}
-    inputs["p_bray_H"] = 19447839.26865841#优化变量1，热泵循环最高压力
-    inputs["p_bray_M"] = 12827110.4341202 #优化变量2，热泵循环中间压力
+    inputs["p_bray_H"] =17318583#优化变量1，热泵循环最高压力
+    inputs["p_bray_M"] = 12303975 #优化变量2，热泵循环中间压力
     inputs["p_Dehy"] = 1e5 #变量4，反应器压力
     inputs["Economic Model Selection"] = 1 #经济模型选择，1Tesio，2Nathan T
     inputs["Compressor power limit"] = 200e6#功率界限，影响齿轮离心和滚筒离心模型的选取，单位W，桶式离心需体积流量
